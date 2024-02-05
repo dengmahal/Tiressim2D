@@ -3,14 +3,14 @@ local car={
     vel={x=0,y=0},
     rot=0,
     rotvel=1,
-    mass=1000,
+    mass=1257,
     inertia=1,
     inertria_scale=1,
     wheelspos={
-        ["FL"]={x=-1,y=-1   },
-        ["FR"]={x=1,y=-1    },
-        ["RL"]={x=-1,y=5.2  },
-        ["RR"]={x=1,y=5.2   },
+        ["FL"]={x=-0.85,y=-1   },
+        ["FR"]={x=0.85,y=-1    },
+        ["RL"]={x=-0.85,y=2.6  },
+        ["RR"]={x=0.85,y=2.6   },
     },
     wheelradius=1,
     wheelsw={
@@ -22,7 +22,7 @@ local car={
     tyre_parameters={
         C0 = 15000, -- Base cornering stiffness (in N/deg)
         Fz = 2500, -- Vertical load on the tire (in N)
-        D = 1.3, -- Peak stiffness factor
+        D = 10.3, -- Peak stiffness factor
         E = 0.8 -- Curvature factor
       },
     wheelsgpos={
@@ -103,18 +103,24 @@ function love.update(dt)
     if love.keyboard.isDown("left") then
         _G.campos.x=_G.campos.x-dt*15
     end
+    local mm=1
+    if love.keyboard.isDown("lshift") then
+        mm=0.5
+    else
+        mm=1
+    end
     local dd=false
     if love.keyboard.isDown("a") then
-        car.wheelsrots["FR"]=-1/(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15)
-        car.wheelsrots["FL"]=-1/(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15)
+        car.wheelsrots["FR"]=-1/math.max(1,(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15))*mm
+        car.wheelsrots["FL"]=-1/math.max(1,(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15))*mm
         --car.rotvel=-1
         dd=true
         --car.rot=car.rot-dt*2
     end
     if love.keyboard.isDown("d") then
         --car.rotvel=1
-        car.wheelsrots["FR"]=1/(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15)
-        car.wheelsrots["FL"]=1/(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15)
+        car.wheelsrots["FR"]=1/math.max(1,(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15))*mm
+        car.wheelsrots["FL"]=1/math.max(1,(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*0.15))*mm
         dd=true
         --car.rot=car.rot+dt*2
     end
@@ -126,13 +132,13 @@ function love.update(dt)
     local dddd=false
     if love.keyboard.isDown("w") then
         for i,v in pairs(car.wheelsw)do
-            car.wheelsw[i]=car.wheelsw[i]+dt*3
+            car.wheelsw[i]=car.wheelsw[i]+dt*30
         end
         dddd=true
     end
     if love.keyboard.isDown("s") then
         for i,v in pairs(car.wheelsw)do
-            car.wheelsw[i]=car.wheelsw[i]-dt*3
+            car.wheelsw[i]=car.wheelsw[i]-dt*30
         end
         dddd=true
     end
@@ -141,7 +147,7 @@ function love.update(dt)
             --car.wheelsw[i]=0
         end
     end
-    car.rotvel=car.rotvel+car.TA*0.5
+    car.rotvel=car.rotvel+car.TA*0.5*dt
     car.vel.x=car.vel.x+car.LA.x*0.5*dt
     car.vel.y=car.vel.y+car.LA.y*0.5*dt
     car.pos.x=car.pos.x+car.vel.x*0.5*dt
@@ -198,7 +204,7 @@ function love.update(dt)
 
     local TA=TTQ/car.inertia
     car.TA=TA
-    car.rotvel=car.rotvel+TA*0.5
+    car.rotvel=car.rotvel+TA*0.5*dt
     local A={x=TFX/car.mass,y=TFY/car.mass}
     car.LA=A
     car.vel.x=car.vel.x+A.x*0.5*dt
@@ -339,6 +345,6 @@ love.run= function()
 			love.graphics.present()
 		end
 
-		if love.timer then love.timer.sleep(0.0001) end
+		--if love.timer then love.timer.sleep(0.00005) end
 	end
 end
