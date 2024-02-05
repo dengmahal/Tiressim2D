@@ -5,12 +5,12 @@ local car={
     rotvel=1,
     mass=1257,
     inertia=1,
-    inertria_scale=1,
+    inertria_scale=1.769,
     wheelspos={
-        ["FL"]={x=-0.85,y=-1   },
-        ["FR"]={x=0.85,y=-1    },
-        ["RL"]={x=-0.85,y=2.6  },
-        ["RR"]={x=0.85,y=2.6   },
+        ["FL"]={x=-0.85,y=-1.01712    },
+        ["FR"]={x=0.85,y=-1.01712     },
+        ["RL"]={x=-0.85,y=1.59088  },
+        ["RR"]={x=0.85,y=1.59088   },
     },
     wheelradius=1,
     wheelsw={
@@ -22,7 +22,7 @@ local car={
     tyre_parameters={
         C0 = 15000, -- Base cornering stiffness (in N/deg)
         Fz = 2500, -- Vertical load on the tire (in N)
-        D = 10.3, -- Peak stiffness factor
+        D = 1.3, -- Peak stiffness factor
         E = 0.8 -- Curvature factor
       },
     wheelsgpos={
@@ -58,7 +58,40 @@ local car={
         ["RL"]=0,
         ["RR"]=0,
     },
+    wA={
+        ["FL"]=0,
+        ["FR"]=0,
+        ["RL"]=0,
+        ["RR"]=0,
+    },
 }
+
+
+local new_car={
+    pos={x=0,y=0},
+    vel={x=0,y=0},
+    rot=0,
+    rotvel=1,
+    mass=1257,
+    inertia=1,
+    inertria_scale=1.769,   --stole this value from assetto corsa mod
+    CG_height=0.75, -->meters
+    wheels_constant={
+        ["FL"]={
+            typre_params={
+                D = 10.3, -- Peak stiffness factor
+                E = 0.8 -- Curvature factor
+            },
+            diameter=0.4572,
+            mass=9.3,
+            x=-0.85,y=-1.01712 , --->position relative to CG
+
+        }
+    }
+
+
+}
+
 _G.campos={x=0,y=0}
 _G.camzoom=0.2
 function love.load()
@@ -71,7 +104,7 @@ function love.load()
     iner=iner*car.inertria_scale
     car.inertia=iner
 end
-function normalize_angle(angle)
+local function normalize_angle(angle)
     angle = angle % (2 * math.pi)
     if angle > math.pi then
         angle = angle - 2 * math.pi
@@ -79,7 +112,7 @@ function normalize_angle(angle)
     return angle
 end
 local sr=0
-function sign(x)
+local function sign(x)
     return x > 0 and 1 or (x < 0 and -1 or 0)
 end
 local ldt=1
@@ -106,6 +139,8 @@ function love.update(dt)
     local mm=1
     if love.keyboard.isDown("lshift") then
         mm=0.5
+    elseif love.keyboard.isDown("rshift") then
+        mm=0.25
     else
         mm=1
     end
