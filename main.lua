@@ -1,4 +1,4 @@
-
+local socket=require("socket")
 local new_car={
     car_ID=1, --cuz mp
     pos={x=0,y=0},
@@ -11,10 +11,7 @@ local new_car={
     CG_height=0.75, -->meters
     wheels={
         ["FL"]={
-            tyre_params={
-                D = 1.3, -- Peak stiffness factor
-                E = 0.8 -- Curvature factor
-            },
+            tyre_params=1,
             radius=0.4572/2,
             mass=9.3,
             inertria_scale=1,
@@ -23,10 +20,7 @@ local new_car={
             rot=0, --rad
         },
         ["FR"]={
-            tyre_params={
-                D = 1.3, -- Peak stiffness factor
-                E = 0.8 -- Curvature factor
-            },
+            tyre_params=1,
             radius=0.4572/2,
             mass=9.3,
             inertria_scale=1,
@@ -36,10 +30,7 @@ local new_car={
         },
 
         ["RL"]={
-            tyre_params={
-                D = 1.3, -- Peak stiffness factor
-                E = 0.8 -- Curvature factor
-            },
+            tyre_params=2,
             radius=0.4572/2,
             mass=9.3,
             inertria_scale=1,
@@ -49,10 +40,7 @@ local new_car={
         },
 
         ["RR"]={
-            tyre_params={
-                D = 1.3, -- Peak stiffness factor
-                E = 0.8 -- Curvature factor
-            },
+            tyre_params=2,
             radius=0.4572/2,
             mass=9.3,
             inertria_scale=1,
@@ -60,8 +48,18 @@ local new_car={
             w=0, --rad/s
             rot=0, --rad
         },
+    },
+    tyre_params={
+        [1]={
+            D = 1.3, -- Peak stiffness factor
+            E = 0.8 -- Curvature factor
 
-        
+        },
+        [2]={
+            D = 1.3, -- Peak stiffness factor
+            E = 0.8 -- Curvature factor
+
+        }
     },
     LA={x=0,y=0,t=0},
     debug={
@@ -119,8 +117,11 @@ local function sign(x)
     return x > 0 and 1 or (x < 0 and -1 or 0)
 end
 local ldt=1
+local avgldt=0.002
 function love.update(dt)
     ldt=dt
+    avgldt=((avgldt*99)+dt) /100
+    --ldt=dt
     if love.keyboard.isDown("+") then
         _G.camzoom=_G.camzoom+(dt*_G.camzoom)
     end
@@ -204,6 +205,7 @@ function love.update(dt)
         local TFY=0
         local TTQ=0
         for i,wheel in pairs(car.wheels)do
+            local tyre_params=_G.cars[car_ID].tyre_params[wheel.tyre_params]
             local wp={ x = (wheel.x * math.cos(car.rot)) - (wheel.y * math.sin(car.rot)), y = (wheel.x * math.sin(car.rot)) + (wheel.y * math.cos(car.rot)) }
             local wdc=math.sqrt(wheel.x*wheel.x+wheel.y*wheel.y)
             local linvel={--global
@@ -216,8 +218,8 @@ function love.update(dt)
             if linvmn==0 then linvmn=1e-16 end
             local slipRatio = (wheel.w * wheel.radius - linvmn) / linvmn
             local Fz=car.mass*0.25*-9.81
-            local longF=Fz * wheel.tyre_params.D * math.sin(1.9*math.atan(10*slipRatio-wheel.tyre_params.E*(10*slipRatio-math.atan(10*slipRatio))))
-            local latF=Fz * wheel.tyre_params.D * math.sin(1.9*math.atan(10*slip_angle-wheel.tyre_params.E*(10*slip_angle-math.atan(10*slip_angle))))
+            local longF=Fz * tyre_params.D * math.sin(1.65*math.atan(10*slipRatio-tyre_params.E*(10*slipRatio-math.atan(10*slipRatio))))
+            local latF=Fz * tyre_params.D * math.sin(1.3*math.atan(10*slip_angle-tyre_params.E*(10*slip_angle-math.atan(10*slip_angle))))
             longF=longF*math.cos(slip_angle) --<need this but for latF/sr aswell later
             _G.cars[car_ID].debug.Flat[i]={ x = (latF * math.cos(car.rot+wheel.rot)), y = (latF * math.sin(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.Flong[i]={ x = -(longF*math.sin(car.rot+wheel.rot)) , y = (longF*math.cos(car.rot+wheel.rot))}
@@ -252,7 +254,7 @@ function love.draw()
     local screenXH,screenYH=screenX*0.5,screenY*0.5
 
     --draw 
-    
+    -- [[
     for i=-_G.campos.x-(screenXH*math.max(math.floor(_G.camzoom+0.5),1)),-_G.campos.x+(screenXH*math.max(math.floor(_G.camzoom+0.5),1)),20 do
         for ii=-_G.campos.y-(screenYH*math.max(math.floor(_G.camzoom+0.5),1)),-_G.campos.y+(screenYH*math.max(math.floor(_G.camzoom+0.5),1)),20 do
             love.graphics.setColor(.1,.1,.1,1)
@@ -273,7 +275,7 @@ function love.draw()
             love.graphics.polygon("fill",tl[1],tl[2],tr[1],tr[2],br[1],br[2],bl[1],bl[2])
         end
     end
-    
+    --]]
     --dar car
     local corners={
         {x=-0.15,y=-0.25},
@@ -316,7 +318,7 @@ function love.draw()
     end
     local car=_G.cars[1]
     love.graphics.setColor(1,1,1,1)
-    love.graphics.print("UPS: "..math.floor((100/ldt)/100+0.5),100,100)
+    love.graphics.print("UPS: "..math.floor((100/avgldt)/100+0.5),100,100)
     love.graphics.print("camzoom: "..math.floor((_G.camzoom*100)+0.5)/100,300,100)
     love.graphics.print("campos: "..math.floor((_G.campos.x*100)+0.5)/100 .. math.floor((_G.campos.y*100)+0.5)/100,300,400)
     love.graphics.print("vel_xy: "..car.vel.x.." "..car.vel.y,10,10)
@@ -345,12 +347,13 @@ love.run= function()
 	if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
 
 	-- We don't want the first frame's dt to include time taken by love.load.
-	if love.timer then love.timer.step() end
-
+	--if love.timer then love.timer.step() end
+    love.timer.step()
 	local dt = 0
-
-	-- Main loop time.
+    -- Main loop time.
 	return function()
+        local start=love.timer.getTime()
+
 		-- Process events.
 		if love.event then
 			love.event.pump()
@@ -365,20 +368,30 @@ love.run= function()
 		end
 
 		-- Update dt, as we'll be passing it to update
-		if love.timer then dt = love.timer.step() end
+		--if love.timer then dt = love.timer.step() end
+        --if love.timer then
+            love.timer.step()
+            dt = love.timer.getDelta()
+        --end
 
 		-- Call update and draw
-		if love.update then love.update(dt) end -- will pass 0 if love.timer is disabled
-
-		if love.graphics and love.graphics.isActive() then
-			love.graphics.origin()
-			love.graphics.clear(love.graphics.getBackgroundColor())
-
-			if love.draw then love.draw() end
-
-			love.graphics.present()
-		end
-
-		--if love.timer then love.timer.sleep(0.00005) end
+        local uc = coroutine.create(function()
+             love.update(dt)
+        end)
+        coroutine.resume(uc)
+        --if love.update then love.update(dt) end -- will pass 0 if love.timer is disabled
+        local dc = coroutine.create(function()
+            if love.graphics and love.graphics.isActive() then
+                love.graphics.origin()
+                love.graphics.clear(love.graphics.getBackgroundColor())
+                love.draw()
+                love.graphics.present()
+            end
+        end)
+        coroutine.resume(dc)
+        love.timer.sleep(0.02-(love.timer.getTime()-start))
+        --print(lag)
+		--if love.timer then love.timer.sleep(0.002) end
 	end
+    
 end
