@@ -2,7 +2,7 @@ local socket=require("socket")
 local new_car={
     car_ID=1, --cuz mp
     pos={x=0,y=0},
-    vel={x=0,y=0},
+    vel={x=10,y=0},
     rot=0,
     rotvel=0,
     mass=1257,
@@ -52,12 +52,16 @@ local new_car={
     tyre_params={
         [1]={
             D = 1.3, -- Peak stiffness factor
-            E = 0.8 -- Curvature factor
+            E = 0.8, -- Curvature factor
+            lxal=1,
+            lyka=1,
 
         },
         [2]={
             D = 1.3, -- Peak stiffness factor
-            E = 0.8 -- Curvature factor
+            E = 0.8, -- Curvature factor
+            lxal=1,
+            lyka=1,
 
         }
     },
@@ -88,7 +92,30 @@ local new_car={
 _G.cars={} 
 
 _G.campos={x=0,y=0}
-_G.camzoom=0.2
+_G.camzoom=0.1
+function math.fastatan2(y, x)
+    if x == 0.0 then
+        if y > 0.0 then
+            return math.pi / 2
+        elseif y < 0.0 then
+            return -math.pi / 2
+        else
+            return 0.0
+        end
+    end
+
+    local angle = math.atan(math.abs(y / x))
+
+    if x < 0.0 then
+        angle = math.pi - angle
+    end
+
+    if y < 0.0 then
+        angle = -angle
+    end
+
+    return angle
+end
 function love.load()
     love.window.setMode(1000,500,{vsync=false,resizable=true,msaa=1})
     _G.cars[1]={} --> 1 is always this player
@@ -212,23 +239,31 @@ function love.update(dt)
                 x = (-(wp.y) * car.rotvel)+car.vel.x ,
                 y = ((wp.x) * car.rotvel)+car.vel.y
             }
-            local slip_angle = normalize_angle(math.atan2(linvel.x, -linvel.y) -car.rot -wheel.rot)
+            local slip_angle = normalize_angle(math.fastatan2(linvel.x, -linvel.y) -car.rot -wheel.rot)
             local linvm=math.sqrt(linvel.x*linvel.x+linvel.y*linvel.y)
             local linvmn=linvel.x*math.sin(car.rot)-linvel.y*math.cos(car.rot)
             if linvmn==0 then linvmn=1e-16 end
             local slipRatio = (wheel.w * wheel.radius - linvmn) / linvmn
             local Fz=car.mass*0.25*-9.81
+            local combined_slip = math.sqrt(slipRatio*slipRatio + slip_angle*slip_angle) or 1E-6
+            local normalized_slipRatio = math.abs(slipRatio / combined_slip)
+            local normalized_slip_angle = math.abs(slip_angle / combined_slip)
             local longF=Fz * tyre_params.D * math.sin(1.65*math.atan(10*slipRatio-tyre_params.E*(10*slipRatio-math.atan(10*slipRatio))))
             local latF=Fz * tyre_params.D * math.sin(1.3*math.atan(10*slip_angle-tyre_params.E*(10*slip_angle-math.atan(10*slip_angle))))
-            longF=longF*math.cos(slip_angle) --<need this but for latF/sr aswell later
+            longF=longF*normalized_slipRatio
+            latF=latF*normalized_slip_angle
+            --longF=longF*math.cos(slip_angle)
+            longF=longF*(math.cos(slip_angle)/math.abs(math.cos(slip_angle))) 
+
+
             _G.cars[car_ID].debug.Flat[i]={ x = (latF * math.cos(car.rot+wheel.rot)), y = (latF * math.sin(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.Flong[i]={ x = -(longF*math.sin(car.rot+wheel.rot)) , y = (longF*math.cos(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.gpos[i].x=wp.x+car.pos.x
             _G.cars[car_ID].debug.gpos[i].y=wp.y+car.pos.y
             TFX=TFX+(latF * math.cos(car.rot+wheel.rot))-(longF*math.sin(car.rot+wheel.rot))
             TFY=TFY+(latF * math.sin(car.rot+wheel.rot))+(longF*math.cos(car.rot+wheel.rot))
-            TTQ=TTQ-(latF*math.cos(wheel.rot)*wheel.y)
-            TTQ=TTQ+(longF*math.cos(wheel.rot)*wheel.x)
+            TTQ=TTQ-(latF*math.cos(wheel.rot)*wheel.y)+(latF*math.sin(wheel.rot)*wheel.x)
+            TTQ=TTQ+(longF*math.cos(wheel.rot)*wheel.x)+(longF*math.sin(wheel.rot)*wheel.y)
             if dd==false and i=="FR" then
                 --car.wheelsrots["FR"]=slip_angle*1
             elseif dd==false and i=="FL" then
@@ -389,7 +424,7 @@ love.run= function()
             end
         end)
         coroutine.resume(dc)
-        love.timer.sleep(0.02-(love.timer.getTime()-start))
+        love.timer.sleep(0.002-(love.timer.getTime()-start))
         --print(lag)
 		--if love.timer then love.timer.sleep(0.002) end
 	end
