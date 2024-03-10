@@ -1,4 +1,8 @@
 local socket=require("socket")
+local ffi=require("ffi")
+local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
+local TICK_RATE = 1 / 500
+
 local new_car={
     car_ID=1, --cuz mp
     pos={x=0,y=0},
@@ -54,14 +58,14 @@ local new_car={
             D = 1.3, -- Peak stiffness factor
             E = 0.8, -- Curvature factor
             lxal=1,
-            lyka=1,
+            lyka=0.5,
 
         },
         [2]={
             D = 1.3, -- Peak stiffness factor
             E = 0.8, -- Curvature factor
             lxal=1,
-            lyka=1,
+            lyka=0.5,
 
         }
     },
@@ -131,7 +135,12 @@ function love.load()
     end
     iner=iner*_G.cars[1].inertria_scale
     _G.cars[1].inertia=iner
+
+    
+    
 end
+
+
 local function normalize_angle(angle)
     angle = angle % (2 * math.pi)
     if angle > math.pi then
@@ -146,8 +155,9 @@ end
 local ldt=1
 local avgldt=0.002
 function love.update(dt)
+   
     ldt=dt
-    avgldt=((avgldt*99)+dt) /100
+    avgldt=((avgldt*9)+dt) /10
     --ldt=dt
     if love.keyboard.isDown("+") then
         _G.camzoom=_G.camzoom+(dt*_G.camzoom)
@@ -250,8 +260,8 @@ function love.update(dt)
             local normalized_slip_angle = math.abs(slip_angle / combined_slip)
             local longF=Fz * tyre_params.D * math.sin(1.65*math.atan(10*slipRatio-tyre_params.E*(10*slipRatio-math.atan(10*slipRatio))))
             local latF=Fz * tyre_params.D * math.sin(1.3*math.atan(10*slip_angle-tyre_params.E*(10*slip_angle-math.atan(10*slip_angle))))
-            longF=longF*normalized_slipRatio
-            latF=latF*normalized_slip_angle
+            longF=longF*normalized_slipRatio*tyre_params.lxal
+            latF=latF*normalized_slip_angle*tyre_params.lyka
             --longF=longF*math.cos(slip_angle)
             longF=longF*(math.cos(slip_angle)/math.abs(math.cos(slip_angle))) 
 
@@ -283,7 +293,7 @@ function love.update(dt)
     end
     _G.campos={x=_G.cars[1].pos.x,y=_G.cars[1].pos.y}
 end
-function love.draw()
+function love.draw(dt)
     love.graphics.clear()
     local screenX,screenY=love.graphics.getWidth( ),love.graphics.getHeight( )
     local screenXH,screenYH=screenX*0.5,screenY*0.5
@@ -354,6 +364,7 @@ function love.draw()
     local car=_G.cars[1]
     love.graphics.setColor(1,1,1,1)
     love.graphics.print("UPS: "..math.floor((100/avgldt)/100+0.5),100,100)
+    love.graphics.print("fps: "..math.floor((100/dt)/100+0.5),200,100)
     love.graphics.print("camzoom: "..math.floor((_G.camzoom*100)+0.5)/100,300,100)
     love.graphics.print("campos: "..math.floor((_G.campos.x*100)+0.5)/100 .. math.floor((_G.campos.y*100)+0.5)/100,300,400)
     love.graphics.print("vel_xy: "..car.vel.x.." "..car.vel.y,10,10)
@@ -378,55 +389,44 @@ function love.draw()
 
 end
 
-love.run= function()
-	if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
+function love.run()
+    if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
+ 
+    -- We don't want the first frame's dt to include time taken by love.load.
+    if love.timer then love.timer.step() end
 
-	-- We don't want the first frame's dt to include time taken by love.load.
-	--if love.timer then love.timer.step() end
-    love.timer.step()
-	local dt = 0
+    local lag = 0.0
+
     -- Main loop time.
-	return function()
-        local start=love.timer.getTime()
-
-		-- Process events.
-		if love.event then
-			love.event.pump()
-			for name, a,b,c,d,e,f in love.event.poll() do
-				if name == "quit" then
-					if not love.quit or not love.quit() then
-						return a or 0
-					end
-				end
-				love.handlers[name](a,b,c,d,e,f)
-			end
-		end
-
-		-- Update dt, as we'll be passing it to update
-		--if love.timer then dt = love.timer.step() end
-        --if love.timer then
-            love.timer.step()
-            dt = love.timer.getDelta()
-        --end
-
-		-- Call update and draw
-        local uc = coroutine.create(function()
-             love.update(dt)
-        end)
-        coroutine.resume(uc)
-        --if love.update then love.update(dt) end -- will pass 0 if love.timer is disabled
-        local dc = coroutine.create(function()
-            if love.graphics and love.graphics.isActive() then
-                love.graphics.origin()
-                love.graphics.clear(love.graphics.getBackgroundColor())
-                love.draw()
-                love.graphics.present()
+    return function()
+        -- Process events.
+        if love.event then
+            love.event.pump()
+            for name, a,b,c,d,e,f in love.event.poll() do
+                if name == "quit" then
+                    if not love.quit or not love.quit() then
+                        return a or 0
+                    end
+                end
+                love.handlers[name](a,b,c,d,e,f)
             end
-        end)
-        coroutine.resume(dc)
-        love.timer.sleep(0.002-(love.timer.getTime()-start))
-        --print(lag)
-		--if love.timer then love.timer.sleep(0.002) end
-	end
-    
+        end
+        local ddt=love.timer.step()
+        lag = lag + ddt
+
+        while lag >= TICK_RATE do
+            if love.update then love.update(TICK_RATE) end
+            lag = lag - TICK_RATE
+        end
+
+        if love.graphics and love.graphics.isActive() then
+            love.graphics.origin()
+            love.graphics.clear(love.graphics.getBackgroundColor())
+ 
+            if love.draw then love.draw(ddt) end
+            love.graphics.present()
+        end
+
+        --if love.timer then love.timer.sleep(0.001) end
+    end
 end
