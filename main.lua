@@ -1,7 +1,9 @@
 local socket=require("socket")
+local debug = require("debug")
 local ffi=require("ffi")
+local Steam = require 'luasteam'
 local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
-local TICK_RATE = 1 / 500
+local TICK_RATE = 1 / 250
 --165
 local default_tyre_params={ --205/60R15 91V
         longitudinal_coefficients={
@@ -94,7 +96,7 @@ local default_tyre_params={ --205/60R15 91V
 local new_car={
     car_ID=1, --cuz mp
     pos={x=0,y=0},
-    vel={x=10,y=0},
+    vel={x=00,y=10},
     rot=0,
     rotvel=0,
     mass=1257,
@@ -217,6 +219,7 @@ function math.fastatan2(y, x)
     return angle
 end
 function love.load(arg,unfilteredArg)
+    Steam.init()
     love.window.setMode(1000,500,{vsync=false,resizable=true,msaa=1})
     _G.cars[1]={} --> 1 is always this player
     for i,v in pairs(new_car) do
@@ -231,16 +234,18 @@ function love.load(arg,unfilteredArg)
     end
     iner=iner*_G.cars[1].inertria_scale
     _G.cars[1].inertia=iner
-
-    
-    
 end
 
+function love.quit()
+    Steam.shutdown()
+end
 
 local function normalize_angle(angle)
     angle = angle % (2 * math.pi)
     if angle > math.pi then
         angle = angle - 2 * math.pi
+    elseif angle < -math.pi then
+        angle = angle + 2 * math.pi
     end
     return angle
 end
@@ -252,7 +257,9 @@ end
 local ldt=1
 local avgldt=0.002
 local trot=0
+
 function love.update(dt)
+    
    
     ldt=dt
     avgldt=((avgldt*9)+dt) /10
@@ -274,6 +281,9 @@ function love.update(dt)
     end
     if love.keyboard.isDown("left") then
         _G.campos.x=_G.campos.x-dt*15
+    end
+    if love.keyboard.isDown("h") then
+        _G.cars[1].pos={x=0,y=0,z=0}
     end
     local mm=1
     if love.keyboard.isDown("lshift") then
@@ -364,7 +374,7 @@ function love.update(dt)
             local slip_angle = normalize_angle(math.fastatan2(linvel.x, -linvel.y) -car.rot -wheel.rot)
             local linvm=math.sqrt(linvel.x*linvel.x+linvel.y*linvel.y)
             local linvmn=linvel.x*math.sin(car.rot)-linvel.y*math.cos(car.rot)
-            local V_x=linvel.x*math.sin(car.rot+wheel.rot)-linvel.y*math.cos(car.rot+wheel.rot)
+            local V_x=-linvel.x*math.sin(car.rot+wheel.rot)-linvel.y*math.cos(car.rot+wheel.rot)
             if linvmn==0 then linvmn=1e-16 end
             local slipRatio = (wheel.w * wheel.radius - linvmn) / linvmn
             local Fz=car.mass*0.25*-9.81 
@@ -478,11 +488,11 @@ function love.update(dt)
             local S_Hxa=tp_lo.r_Hx1
             local E_xa=tp_lo.r_Ex1+tp_lo.r_Ex2*fz
             local C_xa=tp_lo.r_Cx1
-            local B_xa=math.max((tp_lo.r_Bx1+tp_lo.r_Bx2*YS*YS)*math.cos(math.atan(tp_lo.r_Bx2*slipRatio))*tp_Lc.L_xa,0)
+            local B_xa=(tp_lo.r_Bx1+tp_lo.r_Bx2*YS*YS)*math.cos(math.atan(tp_lo.r_Bx2*slipRatio))*tp_Lc.L_xa
             local a_s=aS+S_Hxa
             local G_xa0=math.cos(C_xa*math.atan(B_xa*S_Hxa-E_xa*(B_xa*S_Hxa-math.atan(B_xa*S_Hxa))))
-            local G_xa=math.max((math.cos(C_xa*math.atan(B_xa*a_s-E_xa*(B_xa*a_s-math.atan(B_xa*a_s)))))/G_xa0,0)
-            local F_x=-G_xa*F_x0
+            local G_xa=(math.cos(C_xa*math.atan(B_xa*a_s-E_xa*(B_xa*a_s-math.atan(B_xa*a_s)))))/G_xa0
+            local F_x=G_xa*F_x0
 
             --lat_combined
             local D_Vyk=m_y*Fz*(tp_la.r_Vy1+tp_la.r_Vy2*fz+tp_la.r_Vy3*YS)*math.cos(math.atan(tp_la.r_Vy4*aS))*Z2
@@ -494,7 +504,7 @@ function love.update(dt)
             local k_s=slipRatio+S_Hyk
             local G_yk0=math.cos(C_yk*math.atan(B_yk*S_Hyk-E_yk*(B_yk*S_Hyk-math.atan(B_yk*S_Hyk))))
             local G_yk=math.cos(C_yk*math.atan(B_yk*k_s-E_yk*(B_yk*k_s-math.atan(B_yk*k_s))))/G_yk0
-            local F_y=G_yk*F_y0+S_Vyk
+            local F_y=G_yk*F_y0--+S_Vyk
 
             local M_zfi90=M_zfii*(2/math.pi)*math.atan(tp_ts.q_Crfi2*wheel.radius*math.abs(fi_t))*G_yk
             local Z7=(2/math.pi)*math.acos(M_zfi90/(math.abs(D_rfi)+J_r))
@@ -507,7 +517,7 @@ function love.update(dt)
             local S_Ht=tp_al.q_Hz1+tp_al.q_Hz2*fz+(tp_al.q_Hz3+tp_al.q_Hz4*fz)*YS
             local a_t=aS+S_Ht
             local B_t=(tp_al.q_Bz1+tp_al.q_Bz2*fz*fz)*(1+tp_al.q_Bz5*math.abs(YS)+tp_al.q_Bz6*YS*YS)*(tp_Lp.L_Kya/tp_Lp.L_muy)
-            local E_t=(tp_al.q_Ez1+tp_al.q_Ez2*fz+tp_al.q_Ez3*fz*fz)*math.min(1+(tp_al.q_Ez4+tp_al.q_Ez5*YS)*(2/math.pi)*math.atan(B_t*C_t*a_t),1)
+            local E_t=(tp_al.q_Ez1+tp_al.q_Ez2*fz+tp_al.q_Ez3*fz*fz)*(1+(tp_al.q_Ez4+tp_al.q_Ez5*YS)*(2/math.pi)*math.atan(B_t*C_t*a_t))
 
             local D_t=D_t0*(1+tp_al.q_Dz3*math.abs(YS)+tp_al.q_Dz4*YS*YS)*Z5
             local K_zao=D_t0*K_ya
@@ -518,7 +528,6 @@ function love.update(dt)
             local t0=D_t*math.cos(C_t*math.atan(B_t*a_t-E_t*(B_t*a_t-math.atan(B_t*a_t))))*math.cos(slip_angle)
             local M_szo=-t0*F_y0
             local M_z0=M_szo+M_zro
-            
 
             --aligning combined
             local KxkdKsya=K_xk/K_sya
@@ -534,7 +543,7 @@ function love.update(dt)
             local M_z=M_sz+M_zr+s*F_x
 
             --
-            --[[old code
+            --[[old code below commented
             local combined_slip = math.sqrt(slipRatio*slipRatio + slip_angle*slip_angle) or 1E-6
             local normalized_slipRatio = math.abs(slipRatio / combined_slip)
             local normalized_slip_angle = math.abs(slip_angle / combined_slip)
@@ -546,8 +555,10 @@ function love.update(dt)
             longF=longF*(math.cos(slip_angle)/math.abs(math.cos(slip_angle))) 
             --]]
 
-            F_x=math.abs(F_x)*(math.cos(slip_angle)/math.abs(math.cos(slip_angle)))
-
+            --F_x=math.abs(F_x)*(math.cos(slip_angle)/math.abs(math.cos(slip_angle)))
+            --F_x=math.abs(F_x)*math.sign(slipRatio)
+            --F_y=math.abs(F_y)*math.sign(slip_angle)
+            
             _G.cars[car_ID].debug.Flat[i]={ x = (F_y * math.cos(car.rot+wheel.rot)), y = (F_y * math.sin(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.Flong[i]={ x = -(F_x*math.sin(car.rot+wheel.rot)) , y = (F_x*math.cos(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.gpos[i].x=wp.x+car.pos.x
@@ -561,8 +572,8 @@ function love.update(dt)
             elseif dd==false and i=="FL" then
                 --car.wheelsrots["FL"]=slip_angle*1
             end
+            
         end
-
         local TA=TTQ/car.inertia
         _G.cars[car_ID].rotvel=car.rotvel+TA*0.5*dt
         local A={x=TFX/car.mass,y=TFY/car.mass}
@@ -669,7 +680,7 @@ function love.draw(dt)
     love.graphics.setColor(1,1,1,1)
     love.graphics.line((car.pos.x-_G.campos.x)/_G.camzoom+screenXH,(car.pos.y-_G.campos.y)/_G.camzoom+screenYH,(car.pos.x+carf.x-_G.campos.x)/_G.camzoom+screenXH,(car.pos.y+carf.y-_G.campos.y)/_G.camzoom+screenYH)
 
-
+    
 end
 
 function love.run()
