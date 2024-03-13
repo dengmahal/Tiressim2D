@@ -27,7 +27,7 @@ local default_tyre_params={ --205/60R15 91V
             q_sy6=0,q_sy7=0.9008,q_sy8=-0.4089
         },
         aligning_coefficients={
-            q_Bz1=12.035,q_Bz2=-1.33,q_Bz3=0,q_Bz4=0.176,q_Bz5=-0.14853,q_Bz9=34.5,q_Bz10=0,
+            q_Bz1=12.035,q_Bz2=-1.33,q_Bz3=0,q_Bz4=0.176,q_Bz5=-0.14853,q_Bz9=34.5,q_Bz10=0,q_Bz6=0,
             q_Cz1=1.2923,q_Dz1=0.09068,q_Dz2=-0.00565,q_Dz3=0.3778,q_Dz4=0,q_Dz6=0.0017015,
             q_Dz7=-0.002091,q_Dz8=-0.1428,q_Dz9=0.00915,q_Dz10=0,q_Dz11=0,
             q_Ez1=-1.7924,q_Ez2=0.8975,q_Ez3=0,q_Ez4=0.2895,q_Ez5=-0.6786,
@@ -50,6 +50,7 @@ local default_tyre_params={ --205/60R15 91V
             L_Ex=1,L_Ey=1,      --curvature factor
             L_Hx=1,L_Hy=1,      --horizontal shift
             L_Vx=1,L_Vy=1,      --vertical shift
+            L_Kya=1,            --cornering stiffness
             L_Kyg=1,            --camber force stiffness
             L_Kzg=1,            --camber torque stiffness
             L_t=1,              --pneumatic trail
@@ -110,6 +111,7 @@ local new_car={
             w=0, --rad/s
             rot=0, --rad
             camber=0,
+            tempratur=20,
         },
         ["FR"]={
             tyre_params=1,
@@ -120,6 +122,7 @@ local new_car={
             w=0, --rad/s
             rot=0, --rad
             camber=0,
+            tempratur=20,
         },
 
         ["RL"]={
@@ -131,6 +134,7 @@ local new_car={
             w=0, --rad/s
             rot=0, --rad
             camber=0,
+            tempratur=20,
         },
 
         ["RR"]={
@@ -142,6 +146,7 @@ local new_car={
             w=0, --rad/s
             rot=0, --rad
             camber=0,
+            tempratur=20,
         },
     },
     tyre_params={
@@ -240,11 +245,13 @@ local function normalize_angle(angle)
     return angle
 end
 local sr=0
-local function sign(x)
+---@diagnostic disable-next-line: duplicate-set-field
+function math.sign(x)
     return x > 0 and 1 or (x < 0 and -1 or 0)
 end
 local ldt=1
 local avgldt=0.002
+local trot=0
 function love.update(dt)
    
     ldt=dt
@@ -299,14 +306,16 @@ function love.update(dt)
     end
     local dddd=false
     if love.keyboard.isDown("w") then
+        trot=trot+dt*0.5
         for i,v in pairs(_G.cars[1].wheels)do
-            _G.cars[1].wheels[i].w=v.w+dt*30
+            _G.cars[1].wheels[i].w=trot
         end
         dddd=true
     end
     if love.keyboard.isDown("s") then
+        trot=trot-dt*0.5
         for i,v in pairs(_G.cars[1].wheels)do
-            _G.cars[1].wheels[i].w=v.w-dt*30
+            _G.cars[1].wheels[i].w=trot
         end
         dddd=true
     end
@@ -368,12 +377,19 @@ function love.update(dt)
             local abstd5=math.abs(T_d)+T_d
             local abstd6=-math.abs(T_d)+T_d
             local DTD=1+tp_te.T_3*T_d2+tp_te.T_4*T_d4+abstd5*abstd5*tp_te.T_5-abstd6*abstd6*tp_te.T_6
-
+            local DTW=(1+tp_we.W_D*wettness*wettness)
+            local BTW=tp_we.W_B*wettness
+            local CTW=tp_we.W_C*wettness
+            local ETW=tp_we.W_E*wettness
             --#magic formula
             local YS=math.sin(wheel.camber)
             local Y=wheel.camber
+            local aS=math.tan(slip_angle)*math.sign(slipRatio)
             --turn slip
             local R=0 -- radius of curvature
+            wheel.wheelrate=0
+            local p_di=0
+
             local fi_t=car.rotvel+wheel.wheelrate     -- -1/R
             local J_Y=tp_ts.p_Egfi1*(1+tp_ts.p_Egfi2*fz)
             local fi=-(1/linvm)*(car.rotvel-(1-J_Y)*wheel.w*YS)
@@ -383,49 +399,140 @@ function love.update(dt)
             local C_Hyfi=tp_ts.p_Hyfi1
             local D_Hyfi=(tp_ts.p_Hyfi2+tp_ts.p_Hyfi3*fz)*math.sign(slipRatio)
             local E_Hyfi=tp_ts.p_Hyfi4
-            local K_yRfio=K_yY0/(1-J_Y)
-            local B_Hyfi=K_yRfio/(C_Hyfi*D_Hyfi*K_ya)
+
             local Z2=math.cos(math.atan(B_yfi*(wheel.radius*absfi+tp_ts.p_Dyfi4*math.sqrt(wheel.radius*absfi))))
-            local S_Hyfi=D_Hyfi*math.sin(C_Hyfi*math.atan(B_Hyfi*wheel.radius*fi-E_Hyfi*(B_Hyfi*wheel.radius*fi-math.atan(B_Hyfi*wheel.radius*fi))))*math.sign(V_x)
-            local S_VyY=Fz*(tp_ts.p_Vy3+tp_ts.p_Vy4*fz)*YS*Z2*tp_Lp.L_Kyg*tp_Lp.L_muy
-            local S_Hy=(tp_la.p_Hy1+tp_la.p_Hy2*fz)*tp_Lp.L_Hy+S_Hyfi-(S_VyY/K_ya)
-            local Z4=1+S_Hyfi-(S_VyY/K_ya)
+
+            local S_VyY=Fz*(tp_la.p_Vy3+tp_la.p_Vy4*fz)*YS*Z2*tp_Lp.L_Kyg*tp_Lp.L_muy
+
             local Z5=math.cos(math.atan(tp_ts.q_Drfi1*wheel.radius*fi))
-            local M_zfii=tp_ts.q_Crfi1*muy*wheel.radius*Fz*math.sqrt(Fz/tp_Lp.L_Fz0)*tp_Lo.L_mfi
             local C_Drfi=tp_ts.q_Drfi1
             local E_Drfi=tp_ts.q_Drfi2
-            local D_Drfi=M_zfii/math.sin(0.5*math.pi*C_Drfi)
+            
             local J_r=10e-10
-            local K_zYyo=Fz*wheel.radius*(tp_al.q_Dz8+tp_al.q_Dz9*fz+(tp_la.q_Dz10+tp_la.q_Dz11*fz)*math.abs(Y))*tp_Lp.L_Kzg
-            local B_Drfi=K_zYyo/(C_Drfi*D_Drfi*(1-J_Y)+J_r)
-            local D_rfi=D_Drfi*math.sin(C_Drfi-math.atan(B_Drfi*wheel.radius*fi-E_Drfi*(B_Drfi*wheel.radius*fi-math.atan(B_Drfi*wheel.radius*fi))))
-            local Z8=1+D_rfi
-            local K_zYoo=K_zYo-D_to*K_zYyo
-            local K_zRfio=K_zYoo/(1-J_Y)
+            local K_zYro=Fz*wheel.radius*(tp_al.q_Dz8+tp_al.q_Dz9*fz+(tp_al.q_Dz10+tp_al.q_Dz11*fz)*math.abs(Y))*tp_Lp.L_Kzg
+            
+
+            
             local Z6=math.cos(math.atan(tp_ts.q_Brfi1*wheel.radius*fi))
-            local M_zfi90=M_zfi*(2/math.pi)*math.atan(tp_ts.q_Crfi2*wheel.radius*math.abs(fi_t))*G_yk
-            local Z7=(2/math.pi)*math.acos(M_zfi90/(math.abs(D_rfi)+J_r))
+            
             local B_xfi=tp_ts.p_Dxfi1*(1+tp_ts.p_Dxfi2*fz)*math.cos(math.atan(tp_ts.p_Dxfi3*slipRatio))
             local Z1=math.cos(math.atan(B_xfi*wheel.radius*fi))
-            
+            local Z0=0
             --long_pure
             
             local S_Vx=Fz*(tp_lo.p_Vx1+tp_lo.p_Vx2)*tp_Lp.L_Vx*tp_Lp.L_mux*Z1
             local S_Hx=(tp_lo.p_Hx1+tp_lo.p_Hx2*fz)*tp_Lp.L_Hx
             local K_x=slipRatio+S_Hx
-            local K_xk=Fz*(tp_lo.p_Kx1+tp_lo.p_Kx2*fz)*math.exp(tp_lo.p_Kx3*fz)*(1+tp_lo.p_px1*p_di+tp_lo.p_px2*p_di*p_di)*tp_lo.L_Kxk
+            local K_xk=Fz*(tp_lo.p_Kx1+tp_lo.p_Kx2*fz)*math.exp(tp_lo.p_Kx3*fz)*(1+tp_lo.p_px1*p_di+tp_lo.p_px2*p_di*p_di)*tp_Lp.L_Kxk
             local m_x=(tp_lo.p_Dx1+tp_lo.p_Dx2*fz*fz)*(1+tp_lo.p_px3*p_di*p_di)*(1+tp_lo.p_Dx3*Y*Y)*tp_Lp.L_mux
             local D_x=m_x*Fz*Z1
-            local E_x=(tp_lo.p_Ex1+tp_lo.p_Ex2*fz+tp_lo.p_Ex3*fz*fz)*(1-tp_lo.p_Ex4*sign(K_x))*tp_Lp.L_Ex
+            local E_x=(tp_lo.p_Ex1+tp_lo.p_Ex2*fz+tp_lo.p_Ex3*fz*fz)*(1-tp_lo.p_Ex4*math.sign(K_x))*tp_Lp.L_Ex
             local C_x=tp_lo.p_Cx1*tp_Lp.L_Cx
             local B_x=K_xk/(C_x*D_x+tp_Lo.J_x)
             local B_xt=B_x*BTM
             local D_xt=D_x/DTD
-            local E_xw=E_x-E_x*tp_we.W_E*wettness
-            local D_xtw=D_xt/(1+tp_we.W_D*wettness*wettness)
-            local C_xw=C_x+C_x*tp_we.W_C*wettness
-            local B_xtw=B_xt+B_xt*tp_we.W_B*wettness
+            local E_xw=E_x-E_x*ETW
+            local D_xtw=D_xt/DTW
+            local C_xw=C_x+C_x*CTW
+            local B_xtw=B_xt+B_xt*BTW
             local F_x0=D_xtw*math.sin(C_xw*math.atan(B_xtw*K_x-E_xw*(B_xtw*K_x-math.atan(B_xtw*K_x))))+S_Vx
+            
+            --lat_pure
+            local K_yY0=Fz*(tp_la.p_Ky6+tp_la.p_Ky7*fz)*(1+tp_la.p_py5*p_di)*tp_Lp.L_Kyg
+            local S_Vy=Fz*(tp_la.p_Vy1+tp_la.p_Vy2*fz)*tp_Lp.L_Vy*tp_Lp.L_muy*Z2+S_VyY
+            local K_ya=tp_la.p_Ky1*tp_Lp.L_Fz0*(1+tp_la.p_Ky1*p_di)*(1-tp_la.p_Ky3*math.abs(YS))*math.sin(tp_la.p_Ky4*math.atan((Fz/tp_Lp.L_Fz0)/((tp_la.p_Ky2+tp_la.p_Ky5*YS*YS)*(1+tp_la.p_py2*p_di))))
+            --
+            local D_t0=Fz*(wheel.radius/tp_Lp.L_Fz0)*(tp_al.q_Dz1+tp_al.q_Dz2*fz)*(1-tp_al.p_pz1*p_di)*tp_Lp.L_t*math.sign(slipRatio)
+            --
+            local K_zYo=K_zYro-D_t0*K_yY0
+            local K_zRfio=K_zYo/(1-J_Y)     --moment of stiffness against spin
+            local K_yRfio=K_yY0/(1-J_Y)
+            local B_Hyfi=K_yRfio/(C_Hyfi*D_Hyfi*K_ya)
+            local S_Hyfi=D_Hyfi*math.sin(C_Hyfi*math.atan(B_Hyfi*wheel.radius*fi-E_Hyfi*(B_Hyfi*wheel.radius*fi-math.atan(B_Hyfi*wheel.radius*fi))))*math.sign(V_x)
+            local S_Hy=(tp_la.p_Hy1+tp_la.p_Hy2*fz)*tp_Lp.L_Hy+S_Hyfi-(S_VyY/K_ya)
+            local Z4=1+S_Hyfi-(S_VyY/K_ya)
+            --
+            local a_y=aS+S_Hy
+            local E_y=(tp_la.p_Ey1+tp_la.p_Ey2*fz)*(1+tp_la.p_Ey5*YS*YS-(tp_la.p_Ey3+tp_la.p_Ey4*YS)*math.sign(a_y))*tp_Lp.L_Ey
+            local m_y=(tp_la.p_Dy1+tp_la.p_Dy2+fz)*(1+tp_la.p_py3*p_di*p_di)*(1-tp_la.p_Dy3*YS*YS)*tp_Lp.L_muy
+            --
+            local M_zfii=tp_ts.q_Crfi1*m_y*wheel.radius*Fz*math.sqrt(Fz/tp_Lp.L_Fz0)*tp_Lo.L_Mfi
+            local D_Drfi=M_zfii/math.sin(0.5*math.pi*C_Drfi)
+            local B_Drfi=K_zYro/(C_Drfi*D_Drfi*(1-J_Y)+J_r)
+            local D_rfi=D_Drfi*math.sin(C_Drfi-math.atan(B_Drfi*wheel.radius*fi-E_Drfi*(B_Drfi*wheel.radius*fi-math.atan(B_Drfi*wheel.radius*fi))))
+            local Z8=1+D_rfi
+            --
+            local D_y=m_y*Fz*Z2
+            local C_y=tp_la.p_Cy1*tp_Lp.L_Cy
+            local D_yt=D_y/DTD
+            local B_y=K_ya/(C_y*D_y+tp_Lo.J_y)
+            local B_yt=B_y*BTM
+            local D_ytw=D_yt/DTW
+            local C_yw=C_y+C_y*CTW
+            local B_ytw=B_yt+B_yt*BTW
+            local E_yw=E_y+E_y*ETW
+            local F_y0=D_ytw*math.sin(C_yw*math.atan(B_ytw*a_y-E_yw*(B_ytw*a_y-math.atan(B_ytw*a_y))))+S_Vy
+            
+            
+            --long_combined
+            local S_Hxa=tp_lo.r_Hx1
+            local E_xa=tp_lo.r_Ex1+tp_lo.r_Ex2*fz
+            local C_xa=tp_lo.r_Cx1
+            local B_xa=math.max((tp_lo.r_Bx1+tp_lo.r_Bx2*YS*YS)*math.cos(math.atan(tp_lo.r_Bx2*slipRatio))*tp_Lc.L_xa,0)
+            local a_s=aS+S_Hxa
+            local G_xa0=math.cos(C_xa*math.atan(B_xa*S_Hxa-E_xa*(B_xa*S_Hxa-math.atan(B_xa*S_Hxa))))
+            local G_xa=math.max((math.cos(C_xa*math.atan(B_xa*a_s-E_xa*(B_xa*a_s-math.atan(B_xa*a_s)))))/G_xa0,0)
+            local F_x=-G_xa*F_x0
+
+            --lat_combined
+            local D_Vyk=m_y*Fz*(tp_la.r_Vy1+tp_la.r_Vy2*fz+tp_la.r_Vy3*YS)*math.cos(math.atan(tp_la.r_Vy4*aS))*Z2
+            local S_Vyk=D_Vyk*math.sin(tp_la.r_Vy5*math.atan(tp_la.r_Vy6*slipRatio))*tp_Lc.L_Vyk
+            local S_Hyk=tp_la.r_Hy1+tp_la.r_Hy2*fz
+            local E_yk=tp_la.r_Ey1+tp_la.r_Ey2*fz
+            local C_yk=tp_la.r_Cy1
+            local B_yk=(tp_la.r_By1+tp_la.r_By4*YS*YS)*math.cos(math.atan(tp_la.r_By2*(aS-tp_la.r_By3)))*tp_Lc.L_yk
+            local k_s=slipRatio+S_Hyk
+            local G_yk0=math.cos(C_yk*math.atan(B_yk*S_Hyk-E_yk*(B_yk*S_Hyk-math.atan(B_yk*S_Hyk))))
+            local G_yk=math.cos(C_yk*math.atan(B_yk*k_s-E_yk*(B_yk*k_s-math.atan(B_yk*k_s))))/G_yk0
+            local F_y=G_yk*F_y0+S_Vyk
+
+            local M_zfi90=M_zfii*(2/math.pi)*math.atan(tp_ts.q_Crfi2*wheel.radius*math.abs(fi_t))*G_yk
+            local Z7=(2/math.pi)*math.acos(M_zfi90/(math.abs(D_rfi)+J_r))
+
+            --aligning torque pure --wait this isnt used? no it is :(
+            local C_r=Z7
+            local C_t=tp_al.q_Cz1
+            local D_r=Fz*wheel.radius*((tp_al.q_Dz6+tp_al.q_Dz7*fz)*tp_Lp.L_Mr*Z2+((tp_al.q_Dz8+tp_al.q_Dz9*fz)*(1+tp_al.p_pz1*p_di)+(tp_al.q_Dz10+tp_al.q_Dz11*fz)*math.abs(YS))*YS*tp_Lp.L_Kzg*Z0)*tp_Lp.L_muy*math.sign(slipRatio)*math.cos(slip_angle)+Z8-1
+            local B_r=(tp_al.q_Bz9*(tp_Lp.L_Kya/tp_Lp.L_muy)+tp_al.q_Bz10*B_y*C_y)
+            local S_Ht=tp_al.q_Hz1+tp_al.q_Hz2*fz+(tp_al.q_Hz3+tp_al.q_Hz4*fz)*YS
+            local a_t=aS+S_Ht
+            local B_t=(tp_al.q_Bz1+tp_al.q_Bz2*fz*fz)*(1+tp_al.q_Bz5*math.abs(YS)+tp_al.q_Bz6*YS*YS)*(tp_Lp.L_Kya/tp_Lp.L_muy)
+            local E_t=(tp_al.q_Ez1+tp_al.q_Ez2*fz+tp_al.q_Ez3*fz*fz)*math.min(1+(tp_al.q_Ez4+tp_al.q_Ez5*YS)*(2/math.pi)*math.atan(B_t*C_t*a_t),1)
+
+            local D_t=D_t0*(1+tp_al.q_Dz3*math.abs(YS)+tp_al.q_Dz4*YS*YS)*Z5
+            local K_zao=D_t0*K_ya
+            local K_sya=K_ya+1E-12 --J_K
+            local S_Hf=S_Hy+(S_Vy/K_sya)
+            local a_r=aS+S_Hf
+            local M_zro=D_r*math.cos(C_r*math.atan(B_r*a_r))*math.cos(slip_angle)
+            local t0=D_t*math.cos(C_t*math.atan(B_t*a_t-E_t*(B_t*a_t-math.atan(B_t*a_t))))*math.cos(slip_angle)
+            local M_szo=-t0*F_y0
+            local M_z0=M_szo+M_zro
+            
+
+            --aligning combined
+            local KxkdKsya=K_xk/K_sya
+            local KxkdKsyas=KxkdKsya*KxkdKsya
+            local srsr=slipRatio*slipRatio
+            local a_req=math.sqrt(a_r*a_r+KxkdKsyas*srsr)*math.sign(a_r)
+            local a_teq=math.sqrt(a_t*a_t+KxkdKsyas*srsr)*math.sign(a_t)
+            local s=wheel.radius*(tp_al.s_sz1+tp_al.s_sz2*(F_y/tp_Lp.L_Fz0)+(tp_al.s_sz3+tp_al.s_sz4*fz)*YS)*tp_Lc.L_smz
+            local M_zr=D_r*math.cos(C_r*math.atan(B_r*a_req))*math.cos(slip_angle)
+            local F_sy=G_yk*F_y0
+            local t=D_t*math.cos(C_t*math.atan(B_t*a_teq-E_t*(B_t*a_teq-math.atan(B_t*a_teq))))*math.cos(slip_angle)
+            local M_sz=-t*F_sy
+            local M_z=M_sz+M_zr+s*F_x
+
             --
             --[[old code
             local combined_slip = math.sqrt(slipRatio*slipRatio + slip_angle*slip_angle) or 1E-6
@@ -439,14 +546,16 @@ function love.update(dt)
             longF=longF*(math.cos(slip_angle)/math.abs(math.cos(slip_angle))) 
             --]]
 
-            _G.cars[car_ID].debug.Flat[i]={ x = (latF * math.cos(car.rot+wheel.rot)), y = (latF * math.sin(car.rot+wheel.rot))}
-            _G.cars[car_ID].debug.Flong[i]={ x = -(longF*math.sin(car.rot+wheel.rot)) , y = (longF*math.cos(car.rot+wheel.rot))}
+            F_x=math.abs(F_x)*(math.cos(slip_angle)/math.abs(math.cos(slip_angle)))
+
+            _G.cars[car_ID].debug.Flat[i]={ x = (F_y * math.cos(car.rot+wheel.rot)), y = (F_y * math.sin(car.rot+wheel.rot))}
+            _G.cars[car_ID].debug.Flong[i]={ x = -(F_x*math.sin(car.rot+wheel.rot)) , y = (F_x*math.cos(car.rot+wheel.rot))}
             _G.cars[car_ID].debug.gpos[i].x=wp.x+car.pos.x
             _G.cars[car_ID].debug.gpos[i].y=wp.y+car.pos.y
-            TFX=TFX+(latF * math.cos(car.rot+wheel.rot))-(longF*math.sin(car.rot+wheel.rot))
-            TFY=TFY+(latF * math.sin(car.rot+wheel.rot))+(longF*math.cos(car.rot+wheel.rot))
-            TTQ=TTQ-(latF*math.cos(wheel.rot)*wheel.y)+(latF*math.sin(wheel.rot)*wheel.x)
-            TTQ=TTQ+(longF*math.cos(wheel.rot)*wheel.x)+(longF*math.sin(wheel.rot)*wheel.y)
+            TFX=TFX+(F_y * math.cos(car.rot+wheel.rot))-(F_x*math.sin(car.rot+wheel.rot))
+            TFY=TFY+(F_y * math.sin(car.rot+wheel.rot))+(F_x*math.cos(car.rot+wheel.rot))
+            TTQ=TTQ-(F_y*math.cos(wheel.rot)*wheel.y)+(F_y*math.sin(wheel.rot)*wheel.x)
+            TTQ=TTQ+(F_x*math.cos(wheel.rot)*wheel.x)+(F_x*math.sin(wheel.rot)*wheel.y)
             if dd==false and i=="FR" then
                 --car.wheelsrots["FR"]=slip_angle*1
             elseif dd==false and i=="FL" then
@@ -547,6 +656,7 @@ function love.draw(dt)
     love.graphics.print("vel_glob_rot: "..math.floor(math.atan2(car.vel.x, car.vel.y)*10000)/10000,30,70)
     --love.graphics.print("w: "..math.floor(car.wheelsw["FR"]*10000)/10000,30,90)
     love.graphics.print("slipratio: "..tostring(math.floor(sr*10000)/10000),30,110)  
+    love.graphics.print("w: "..tostring(math.floor(trot*10000)/10000),130,110)
 
     local ta=math.sqrt(car.LA.x*car.LA.x+car.LA.y*car.LA.y)/9.81
     love.graphics.print("G's: "..tostring(math.floor(ta*10000)/10000) .." G",30,130) 
