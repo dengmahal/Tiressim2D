@@ -1,9 +1,48 @@
-local socket=require("socket")
+--local socket=require("socket")
+package = package.path .. [[;..\]]
 local debug = require("debug")
 local ffi=require("ffi")
-local Steam = require 'luasteam'
+print(love.getVersion())
+
+print(love.filesystem.getWorkingDirectory())
+print(love.filesystem.getSource() )
 local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
+--local SSteam= ffi.load([[C:\Users\nigri\Desktop\programmingstuff\Tiressim2D\luasteam.dll]])
+local Steam = require("luasteam")
+local discordRPC = require("discordRPC")
+
 local TICK_RATE = 1 / 250
+--discord stuff
+local appId_txt =  io.open(love.filesystem.getSource().."/../discord_id.txt","r")
+---@diagnostic disable-next-line: need-check-nil
+local appId=appId_txt:read("*a")
+print(appId)
+
+function discordRPC.ready(userId, username, discriminator, avatar)
+    print(string.format("Discord: ready (%s, %s, %s, %s)", userId, username, discriminator, avatar))
+end
+
+function discordRPC.disconnected(errorCode, message)
+    print(string.format("Discord: disconnected (%d: %s)", errorCode, message))
+end
+
+function discordRPC.errored(errorCode, message)
+    print(string.format("Discord: error (%d: %s)", errorCode, message))
+end
+
+function discordRPC.joinGame(joinSecret)
+    print(string.format("Discord: join (%s)", joinSecret))
+end
+
+function discordRPC.spectateGame(spectateSecret)
+    print(string.format("Discord: spectate (%s)", spectateSecret))
+end
+
+function discordRPC.joinRequest(userId, username, discriminator, avatar)
+    print(string.format("Discord: join request (%s, %s, %s, %s)", userId, username, discriminator, avatar))
+    discordRPC.respond(userId, "yes")
+end
+--
 --165
 local default_tyre_params={ --205/60R15 91V
         longitudinal_coefficients={
@@ -221,6 +260,21 @@ end
 function love.load(arg,unfilteredArg)
     Steam.init()
     love.window.setMode(1000,500,{vsync=false,resizable=true,msaa=1})
+    discordRPC.initialize(appId, true)
+    local now = os.time(os.date("*t"))
+    presence = {
+        state = "Driving",
+        details = "nan",
+        startTimestamp = now,
+        endTimestamp = 0,
+        partyId = "party id",
+        partyMax = 2,
+        matchSecret = "match secret",
+        joinSecret = "join secret",
+        spectateSecret = "spectate secret",
+    }
+
+    nextPresenceUpdate = 0
     _G.cars[1]={} --> 1 is always this player
     for i,v in pairs(new_car) do
         _G.cars[1][i]=v
@@ -234,10 +288,15 @@ function love.load(arg,unfilteredArg)
     end
     iner=iner*_G.cars[1].inertria_scale
     _G.cars[1].inertia=iner
+    local success = Steam.friends.setRichPresence('steam_display', "#StatusFull")
+    local success2 = Steam.friends.setRichPresence('status', "debbuging")
+    print(success,success2)
+    
 end
 
 function love.quit()
     Steam.shutdown()
+    discordRPC.shutdown()
 end
 
 local function normalize_angle(angle)
@@ -259,8 +318,17 @@ local avgldt=0.002
 local trot=0
 
 function love.update(dt)
-    
-   
+    --local success = Steam.friends.setRichPresence('debug', 'debugging2')
+    --print(success)
+    if nextPresenceUpdate < love.timer.getTime() then
+        --"x"..tostring(cars[1].vel.x).." y"..tostring(cars[1].vel.y)
+        presence.details="v = "..tostring(math.floor(math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*1000)/1000).."m/s"
+        presence.state="Driving ".."x"..tostring(math.floor(cars[1].vel.x*1000)/1000).." y"..tostring(math.floor(cars[1].vel.y*1000)/1000)
+        discordRPC.updatePresence(presence)
+        nextPresenceUpdate = love.timer.getTime() + 3.0
+    end
+    discordRPC.runCallbacks()
+
     ldt=dt
     avgldt=((avgldt*9)+dt) /10
     --ldt=dt
