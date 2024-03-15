@@ -431,6 +431,7 @@ function love.update(dt)
         local TTQ=0
         --lat=F_y
         --long=F_x
+        --
         for i,wheel in pairs(car.wheels)do
             --local tyre_params=_G.cars[car_ID].tyre_params[wheel.tyre_params]
             local tp=default_tyre_params
