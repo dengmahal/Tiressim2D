@@ -466,7 +466,8 @@ function love.update(dt)
             car.debug.sa[i]=slip_angle
             
 
-
+            
+            
             local Fz=car.mass*0.25*-9.81 
             local fz=0
             --tempratur
