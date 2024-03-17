@@ -12,7 +12,7 @@ local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
 local Steam = require("luasteam")
 local discordRPC = require("discordRPC")
 
-local TICK_RATE = 1 / 500
+local TICK_RATE = 1 / 1000
 --discord stuff
 local appId_txt =  io.open(love.filesystem.getSource().."/../discord_id.txt","r")
 ---@diagnostic disable-next-line: need-check-nil
@@ -99,7 +99,7 @@ local default_tyre_params={ --205/60R15 91V
             L_Mr=1,             --residual torque
         },
         L_combined_slip={
-            L_xa=1,             --slip_angle influence on F_x
+            L_xa=2,             --slip_angle influence on F_x
             L_yk=1,             --slip_ratio influence on F_y
             L_Vyk=1,            --slip_ratio induced ply-steer F_y
             L_smz=1,            --moment arm of F_x
@@ -136,24 +136,27 @@ local default_tyre_params={ --205/60R15 91V
 local new_car={
     car_ID=1, --cuz mp
     pos={x=0,y=0},
-    vel={x=00,y=10},
+    vel={x=00,y=-10},
     rot=0,
     rotvel=0,
     mass=1257,
+    cgear=1,
     inertia=1,      --will be calced automatacly
     inertria_scale=1.0769,
     CG_height=0.75, -->meters
     diffs={
-        [1]={"RR","RL",.5}      --powers1, powers2, lockrate(0=open diff, 1= welded diff)
+        [1]={"RR","RL",1,10,1}      --powers1, powers2, lockrate(0=open diff, 1= welded diff) ,final drive
     },
-    steering_axles={{"FL","FR",math.rad(45),1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
+    steering_axles={{"FL","FR",math.rad(45),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
     transmission_powers_diff=1,
-    engeine={
-        maxrpm=7000,
-        bounce_time=0.3,
+    engine={
+        idle_rpm=700,
+        rev_limiter=6500,
+        bounce_time=0.3,        --in seconds
         inertia=0.04,
         engine_braking=0.001,   --Nm/rpm
         tq_curve={--rpm, torque(Nm)             --non turbo!!!
+            {-10e64,    0},    
             {0,         0},
             {1000,      60},
             {1500,      85},
@@ -171,61 +174,79 @@ local new_car={
             {6500,      85},
             {7000,      60},
             {7500,      10},
+            {8000,       0},
+            {10e64,      0},
         },
+        rpm=0,
 
     },
-
+    transmission={
+        gears={
+            [-1]=-6,
+            [1]=5,
+            [2]=3.25,
+            [3]=2.25,
+            [4]=1.7,
+            [5]=1.3,
+        },
+        loss=0.01       --transmission torque loss in %
+    },
+    drivetrain_inertia=0.01,    --inertia of drivetrain (transmission+driveline+differential)
 
     wheels={
         ["FL"]={
             tyre_params=1,      --id
-            radius=0.4572/2,    --in meters
+            radius=0.31725,     --in meters
             mass=9.3,           --in kg
-            inertria_scale=1,   --multiplier to approximated innertia
             x=-0.85,y=-1.01712 ,--->position relative to CG
-            w=0,                --rad/s --> not a constant        
+            w=0,               --rad/s --> not a constant        
             rot=0,              --rad --> not a constant
-            camber=math.rad(-5),           --in rad
+            camber=math.rad(-5),--in rad
             tempratur=20,       --in K° --> not a constant (well for not it is)
-            lr=0,                   --auto
+            lr=0,               --auto
+            inertia=0.3,         --kg*m^2
+            wa=0,               --last wheel angular acceleration -> auto
         },
         ["FR"]={
             tyre_params=1,  --id
-            radius=0.4572/2,
+            radius=0.31725,
             mass=9.3,
-            inertria_scale=1,
             x=0.85,y=-1.01712 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
+            inertia=0.3,
+            wa=0,
         },
 
         ["RL"]={
             tyre_params=2,  --id
-            radius=0.4572/2,
+            radius=0.31725,
             mass=9.3,
-            inertria_scale=1,
             x=-0.85,y=1.59088 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
+            inertia=0.3,
+            wa=0,
         },
 
         ["RR"]={
             tyre_params=2,  --id
-            radius=0.4572/2,
+            radius=0.31725,
             mass=9.3,
-            inertria_scale=1,
             x=0.85,y=1.59088 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
+            inertia=0.3,
+            wa=0,
         },
     },
     tyre_params={
@@ -267,8 +288,8 @@ local new_car={
     },
     wheelbasey=0,
 }
-new_car.tyre_params[1].L_pure_slip.L_muy=1
-new_car.tyre_params[1].L_pure_slip.L_mux=1
+new_car.tyre_params[1].L_pure_slip.L_muy=2
+new_car.tyre_params[1].L_pure_slip.L_mux=2
 new_car.tyre_params[2].L_pure_slip.L_mux=1
 new_car.tyre_params[2].L_pure_slip.L_muy=1
 _G.cars={} 
@@ -298,10 +319,15 @@ function math.fastatan2(y, x)
 
     return angle
 end
+local joysticks=love.joystick.getJoysticks()
 function love.load(arg,unfilteredArg)
-    Steam.init()
-    love.window.setMode(1000,500,{vsync=false,resizable=true,msaa=1})
-    discordRPC.initialize(appId, true)
+    joysticks=love.joystick.getJoysticks()
+    for i,v in pairs(joysticks)do
+        print(i,v:getAxes())
+    end
+    --Steam.init()
+   -- love.window.setMode(1000,500,{vsync=true,resizable=true,msaa=1})
+    --discordRPC.initialize(appId, true)
 ---@diagnostic disable-next-line: param-type-mismatch
     local now = os.time(os.date("*t"))
     presence = {
@@ -337,20 +363,34 @@ function love.load(arg,unfilteredArg)
         if v.y<yfn then
             yfn=v.y
         end
+        --_G.cars[1].wheels[i].inertia=v.inertria_scale*(v.radius*v.radius+(v.radius-0.1)*(v.radius-0.1))*0.5*v.mass
+        print(_G.cars[1].wheels[i].inertia.." kg*m^2")
     end
     _G.cars[1].wheelbasey=math.abs(yfn-yfp)
     print(_G.cars[1].wheelbasey)
     iner=iner*_G.cars[1].inertria_scale
     _G.cars[1].inertia=iner
-    local success = Steam.friends.setRichPresence('steam_display', "#StatusFull")
-    local success2 = Steam.friends.setRichPresence('status', "debbuging")
-    print(success,success2)
+    _G.cars[1].transmission.forward_gears=0
+    _G.cars[1].transmission.back_gears=0
+    for i,v in pairs(_G.cars[1].transmission.gears)do
+        if i>0 then
+            _G.cars[1].transmission.forward_gears=_G.cars[1].transmission.forward_gears+1
+        end
+        if i<0 then
+            _G.cars[1].transmission.back_gears=_G.cars[1].transmission.back_gears+1
+        end
+    end
+    
+    
+    --local success = Steam.friends.setRichPresence('steam_display', "#StatusFull")
+    --local success2 = Steam.friends.setRichPresence('status', "debbuging")
+    --print(success,success2)
     
 end
 
 function love.quit()
-    Steam.shutdown()
-    discordRPC.shutdown()
+    --Steam.shutdown()
+    --discordRPC.shutdown()
 end
 
 local function normalize_angle(angle)
@@ -370,23 +410,33 @@ end
 local ldt=1
 local avgldt=TICK_RATE
 local trot=0
+print(math.sign(0))
+
+local pressed_up=false
+local pressed_down=false
 
 function love.update(dt)
     --local success = Steam.friends.setRichPresence('debug', 'debugging2')
     --print(success)
+ 
+    
+   
+    
+
+
     if nextPresenceUpdate < love.timer.getTime() then
         --"x"..tostring(cars[1].vel.x).." y"..tostring(cars[1].vel.y)
         presence.details="v = "..tostring(math.floor(math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*1000)/1000).."m/s"
         presence.state="Driving ".."x"..tostring(math.floor(cars[1].vel.x*1000)/1000).." y"..tostring(math.floor(cars[1].vel.y*1000)/1000)
-        discordRPC.updatePresence(presence)
+        --discordRPC.updatePresence(presence)
         nextPresenceUpdate = love.timer.getTime() + 3
     end
-    discordRPC.runCallbacks()
+    --discordRPC.runCallbacks()
 
     
     avgldt=((avgldt*99)+(love.timer.getTime()-ldt)) /100
     ldt=love.timer.getTime()
-    local throttle=0
+    local throttle=0.1
     local clutch=0
     local brake=0
     local steer=-0
@@ -414,11 +464,9 @@ function love.update(dt)
     end
     local mm=1
     if love.keyboard.isDown("lshift") then
-        mm=0.5
-    elseif love.keyboard.isDown("rshift") then
-        mm=0.25
+        clutch=0
     else
-        mm=1
+        clutch=1
     end
     if love.keyboard.isDown("r") then
         cars[1].rot=cars[1].rot+dt*5
@@ -439,15 +487,48 @@ function love.update(dt)
     end
     if love.keyboard.isDown("w") then
         throttle=1
+        if love.keyboard.isDown("f") then
+            throttle=10
+        end
     else
         throttle=0
     end
+    if love.keyboard.isDown("q") then
+        if pressed_down==false then
+            pressed_down=true
+            _G.cars[1].cgear=_G.cars[1].cgear-1
+            if _G.cars[1].cgear<_G.cars[1].transmission.back_gears then
+                _G.cars[1].cgear=-_G.cars[1].transmission.back_gears
+            end
+            if _G.cars[1].cgear==0 then _G.cars[1].cgear=-1 end
+        end
+    else
+        pressed_down=false
+    end
+    if love.keyboard.isDown("e") then
+        if pressed_up==false then
+            pressed_up=true
+            _G.cars[1].cgear=_G.cars[1].cgear+1
+            if _G.cars[1].cgear>_G.cars[1].transmission.forward_gears then
+                _G.cars[1].cgear=_G.cars[1].transmission.forward_gears
+            end
+            if _G.cars[1].cgear==0 then _G.cars[1].cgear=1 end
+        
+        end
+    else
+        pressed_up=false
+    end
+
     if love.keyboard.isDown("s") then
         brake=1
+        _G.cars[1].wheels["RR"].w=-3
+        _G.cars[1].wheels["RL"].w=-3
         else
         brake=0
     end    
-	
+    --throttle=math.min((joysticks[1].getAxis(joysticks[1],6)+1)*0.5,1)
+    --steer=math.min(joysticks[1].getAxis(joysticks[1],1),1)
+
     local wettness=0 --update this, its not a constant
     for car_ID,car in pairs(_G.cars)do
         _G.cars[car_ID].rotvel=car.rotvel+car.LA.t*0.5*dt
@@ -477,6 +558,28 @@ function love.update(dt)
             --print(steer,leftwheelangle,rightwheelangle)
         end
         --]]
+        local engine_toque=0
+        for i,v in pairs(car.engine.tq_curve) do
+            --print(i,v[1],v[2])
+            if car.engine.rpm>=v[1] and car.engine.rpm<=car.engine.tq_curve[i+1][1] then
+                engine_toque=v[2]+(((car.engine.rpm-v[1])/(car.engine.tq_curve[i+1][1]-v[1]))*(car.engine.tq_curve[i+1][2]-v[2]))
+                engine_toque=engine_toque*throttle
+                break
+            end 
+        end
+        local trans_torque=0
+        if car.cgear==0 then
+            trans_torque=0
+        else
+            trans_torque=engine_toque*car.transmission.gears[car.cgear]
+            local engine_rads=((car.wheels[car.diffs[1][1]].w+car.wheels[car.diffs[1][1]].w)*0.5)*(car.diffs[1][5]*car.transmission.gears[car.cgear])/car.wheels["FR"].radius
+            _G.cars[car_ID].engine.rpm=math.max(math.min(60*engine_rads/(2*math.pi),50000),-5000)
+        end
+        ---still needs clutch sim!! avgtq&avgrpm & clutch
+        
+        
+        
+        --local trans_torque=throttle*6000
         if car.rot<-math.pi then
             car.rot=2*math.pi-car.rot--math.pi
         elseif car.rot>math.pi then
@@ -490,6 +593,9 @@ function love.update(dt)
         --long=F_x
         --
         for i,wheel in pairs(car.wheels)do
+            
+            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wheel.wa*dt*0.5
+            _G.cars[car_ID].wheels[i].w=math.min(_G.cars[car_ID].wheels[i].w,200)
             --local tyre_params=_G.cars[car_ID].tyre_params[wheel.tyre_params]
             local tp=default_tyre_params
             local tp_lo=tp.longitudinal_coefficients
@@ -718,7 +824,57 @@ function love.update(dt)
             elseif dd==false and i=="FL" then
                 --car.wheelsrots["FL"]=slip_angle*1
             end
+            local diffbias=0.5 --needs fix
+            local wa=(F_x*wheel.radius)/(wheel.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*diffbias)
+            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wa*dt*0.5
+            _G.cars[car_ID].wheels[i].Lw=wa
             
+        end
+        for idiff,diff in pairs(car.diffs) do
+            local TBR=0
+            local WL=car.wheels[diff[1]]
+            local WR=car.wheels[diff[2]]
+            local RF=car.wheels[diff[1]].w
+            local LF=car.wheels[diff[2]].w
+            if LF>=RF then
+                TBR=(LF/RF)
+            else
+                TBR=(RF/LF)
+            end
+            local tda=math.max(0,math.abs(tonumber(TBR)-diff[4])) 
+
+
+            local output_torque_left=(trans_torque)*0.5 +tda*math.sign(LF-RF)*diff[3]/diff[5]
+            local output_torque_right=(trans_torque)*0.5 +tda*math.sign(RF-LF)*diff[3]/diff[5]
+            local didnan=false
+            if output_torque_left ~= output_torque_left  then
+                output_torque_left=1
+                didnan=true
+            end
+            if output_torque_right ~= output_torque_right  then
+                output_torque_right=1
+                didnan=true
+
+            end
+            
+            local wal=(output_torque_left*WL.radius)/(WL.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*(output_torque_left/output_torque_right*0.5)) 
+            local war=(output_torque_right*WR.radius)/(WR.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*(output_torque_right/output_torque_left*0.5))
+            --if didnan==true then
+            --    wal=(output_torque_left*WL.radius)/(WL.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5) 
+            --    war=(output_torque_right*WR.radius)/(WR.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5)
+            --end
+            --print(output_torque_left,output_torque_right,WL.radius,WL.inertia,car.engine.inertia,clutch,car.drivetrain_inertia,war,wal,wal*dt*0.5,war*dt*0.5*0)
+            
+            if war~=war then
+                war=0
+            end
+            if wal~=wal then
+                wal=0
+            end
+            _G.cars[car_ID].wheels[diff[1]].w=_G.cars[car_ID].wheels[diff[1]].w +wal*dt*0.5
+            _G.cars[car_ID].wheels[diff[2]].w=_G.cars[car_ID].wheels[diff[2]].w +war*dt*0.5
+            --print(wal,war,output_torque_left,output_torque_right)
+
         end
         local TA=TTQ/car.inertia
         _G.cars[car_ID].rotvel=car.rotvel+TA*0.5*dt
@@ -801,8 +957,9 @@ function love.draw(dt)
             local tx=(car.debug.gpos[i].x-_G.campos.x)/_G.camzoom+screenXH
             local ty=(car.debug.gpos[i].y-_G.campos.y)/_G.camzoom+screenYH
             love.graphics.print("sr: "..math.floor((car.debug.sr[i]*10000+0.5))/10000,tx,ty)
-            love.graphics.print("sa: "..math.floor((car.debug.sa[i]*100+0.5))/100,tx,ty+50)
-            love.graphics.print("sa: "..math.floor((wheel.rot*100+0.5))/100,tx,ty+100)
+            love.graphics.print("sa: "..math.floor((car.debug.sa[i]*100+0.5))/100,tx,ty+15)
+            love.graphics.print("rot: "..math.floor((wheel.rot*100+0.5))/100,tx,ty+30)
+            love.graphics.print("w: "..math.floor((wheel.w*100+0.5))/100,tx,ty+45)
         end
     end
     local car=_G.cars[1]
@@ -812,13 +969,15 @@ function love.draw(dt)
     love.graphics.print("camzoom: "..math.floor((_G.camzoom*100)+0.5)/100,300,100)
     love.graphics.print("campos: "..math.floor((_G.campos.x*100)+0.5)/100 .. math.floor((_G.campos.y*100)+0.5)/100,300,400)
     love.graphics.print("vel_xy: "..car.vel.x.." "..car.vel.y,10,10)
-    love.graphics.print("vel_m: "..(math.floor(math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)*1000+.5)/1000).."m/s",500,10)
+    local vel_m=math.sqrt(car.vel.x*car.vel.x+car.vel.y*car.vel.y)
+    love.graphics.print("vel_m: "..(math.floor(vel_m*1000+.5)/1000).."m/s".."   "..(math.floor(vel_m*1000*3.6+.5)/1000).." km/h",500,10)
     love.graphics.print("rotvel: "..tostring(math.floor(car.rotvel*10000+0.5)/10000).." rad/s",500,30)
     love.graphics.print("rot: "..tostring(math.floor(car.rot*10000+0.5)/10000),30,50)
     love.graphics.print("vel_glob_rot: "..math.floor(math.atan2(car.vel.x, car.vel.y)*10000+0.5)/10000,30,70)
     --love.graphics.print("w: "..math.floor(car.wheelsw["FR"]*10000)/10000,30,90)
     love.graphics.print("slipratio: "..tostring(math.floor(sr*10000+0.5)/10000),30,110)  
-    love.graphics.print("w: "..tostring(math.floor(trot*10000+0.5)/10000).."   "..tostring(math.floor(trot*car.wheels["FR"].radius*10000+0.5)/10000),130,110)
+
+    love.graphics.print("engine_rpm: "..tostring(math.floor(_G.cars[1].engine.rpm*10000+0.5)/10000),screenX-200,screenY-50) 
 
     local ta=math.sqrt(car.LA.x*car.LA.x+car.LA.y*car.LA.y)/9.81
     love.graphics.print("G's: "..tostring(math.floor(ta*10000+0.5)/10000) .." G",30,130) 
@@ -841,9 +1000,10 @@ function love.run()
     if love.timer then love.timer.step() end
 
     local lag = 0.0
-
+    local previus_updt=love.timer.getTime() 
     -- Main loop time.
     return function()
+
         -- Process events.
         if love.event then
             love.event.pump()
@@ -856,10 +1016,11 @@ function love.run()
                 love.handlers[name](a,b,c,d,e,f)
             end
         end
+        
         local ddt=love.timer.step()
         lag = lag + ddt
 
-        while lag >= TICK_RATE do
+        while lag >= TICK_RATE*0.5 do
             if love.update then love.update(TICK_RATE) end
             lag = lag - TICK_RATE
         end
@@ -872,6 +1033,6 @@ function love.run()
             love.graphics.present()
         end
 
-        --if love.timer then love.timer.sleep(0.001) end
+        ---if love.timer then love.timer.sleep(0.001) end
     end
 end
