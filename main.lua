@@ -9,14 +9,14 @@ print(love.filesystem.getWorkingDirectory())
 print(love.filesystem.getSource() )
 local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
 --local SSteam= ffi.load([[C:\Users\nigri\Desktop\programmingstuff\Tiressim2D\luasteam.dll]])
-local Steam = require("luasteam")
+--local Steam = require("luasteam")
 local discordRPC = require("discordRPC")
 
 local TICK_RATE = 1 / 1000
 --discord stuff
-local appId_txt =  io.open(love.filesystem.getSource().."/../discord_id.txt","r")
+--local appId_txt =  io.open(love.filesystem.getSource().."/../discord_id.txt","r")
 ---@diagnostic disable-next-line: need-check-nil
-local appId=appId_txt:read("*a")
+local appId="0"--appId_txt:read("*a")
 print(appId)
 
 function discordRPC.ready(userId, username, discriminator, avatar)
@@ -147,7 +147,7 @@ local new_car={
     inertria_scale=1.0769,
     CG_height=0.75, -->meters
     diffs={
-        [1]={"RR","RL",1,350,1}      --powers1, powers2, lockrate(0=open diff, 1= welded diff) ,preload,final drive
+        [1]={"RR","RL",0,0,1}      --powers1, powers2, lockrate(0=open, is Nm/dw) ,preload,final drive
     },
     steering_axles={{"FL","FR",math.rad(45),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
     transmission_powers_diff=1,
@@ -186,10 +186,10 @@ local new_car={
         gears={
             [-1]=-6,
             [1]=5,
-            [2]=3.25,
-            [3]=2.25,
-            [4]=1.7,
-            [5]=1.3,
+            [2]=3.45,
+            [3]=2.45,
+            [4]=1.8,
+            [5]=1.4,
         },
         loss=0.01       --transmission torque loss in %
     },
@@ -205,7 +205,7 @@ local new_car={
             camber=math.rad(-5),--in rad
             tempratur=20,       --in K° --> not a constant (well for not it is)
             lr=0,               --auto
-            inertia=0.3,         --kg*m^2
+            inertia=0.03,         --kg*m^2
             wa=0,               --last wheel angular acceleration -> auto
         },
         ["FR"]={
@@ -217,7 +217,7 @@ local new_car={
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
-            inertia=0.3,
+            inertia=0.03,
             wa=0,
         },
 
@@ -230,7 +230,7 @@ local new_car={
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
-            inertia=0.3,
+            inertia=0.03,
             wa=0,
         },
 
@@ -243,7 +243,7 @@ local new_car={
             camber=math.rad(-5),
             tempratur=20,
             lr=0,
-            inertia=0.3,
+            inertia=0.03,
             wa=0,
         },
     },
@@ -844,20 +844,19 @@ function love.update(dt)
         end
         for idiff,diff in pairs(car.diffs) do
             local TBR=0
-            local WL=car.wheels[diff[1]]
-            local WR=car.wheels[diff[2]]
-            local RF=car.wheels[diff[1]].w
-            local LF=car.wheels[diff[2]].w
-            if LF>=RF then
-                TBR=(LF/RF)
-            else
-                TBR=(RF/LF)
-            end
-            local tda=tonumber(TBR)-diff[4]
+            local WR=car.wheels[diff[1]]
+            local WL=car.wheels[diff[2]]
+            local RW=car.wheels[diff[1]].w
+            local LW=car.wheels[diff[2]].w
 
 
-            local output_torque_left=(trans_torque)*0.5 +tda*math.sign(RF-LF)*diff[3]/diff[5]
-            local output_torque_right=(trans_torque)*0.5 +tda*math.sign(LF-RF)*diff[3]/diff[5]
+            local tda=(math.abs(RW-LW)+diff[4])
+
+            
+            --local output_torque_left=((trans_torque)*0.5 +tda*math.sign(RF-LF)*diff[3]-((LF-RF)*diff[3]))/diff[5]
+            --local output_torque_right=((trans_torque)*0.5 +tda*math.sign(LF-RF)*diff[3]-((RF-LF)*diff[3]))/diff[5]
+            local output_torque_right=(trans_torque*0.5-(tda)*math.sign(RW-LW)*0.5*diff[3])/diff[5]
+            local output_torque_left= (trans_torque*0.5-(tda)*math.sign(LW-RW)*0.5*diff[3])/diff[5]
             local didnan=false
             if output_torque_left ~= output_torque_left  then
                 output_torque_left=1
@@ -866,12 +865,14 @@ function love.update(dt)
             if output_torque_right ~= output_torque_right  then
                 output_torque_right=1
                 didnan=true
-
             end
+            local ABSTT=math.abs(output_torque_left)+math.abs(output_torque_right)
+            local wal=(output_torque_left)/(WL.inertia+car.engine.inertia*clutch*(math.abs(output_torque_left)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_left)/ABSTT)*0.5) 
+            local war=(output_torque_right)/(WR.inertia+car.engine.inertia*clutch*(math.abs(output_torque_right)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_right)/ABSTT)*0.5)
+            
             _G.cars[car_ID].debug.tq[diff[1]]=output_torque_right
             _G.cars[car_ID].debug.tq[diff[2]]=output_torque_left
-            local wal=(output_torque_left*WL.radius)/(WL.inertia+car.engine.inertia*clutch*(output_torque_left/output_torque_right*0.5)+car.drivetrain_inertia*(output_torque_left/output_torque_right*0.5)) 
-            local war=(output_torque_right*WR.radius)/(WR.inertia+car.engine.inertia*clutch*(output_torque_right/output_torque_left*0.5)+car.drivetrain_inertia*(output_torque_right/output_torque_left*0.5))
+            
             --if didnan==true then
             --    wal=(output_torque_left*WL.radius)/(WL.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5) 
             --    war=(output_torque_right*WR.radius)/(WR.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5)
@@ -884,10 +885,10 @@ function love.update(dt)
             if wal~=wal then
                 wal=0
             end
-            _G.cars[car_ID].wheels[diff[1]].w=_G.cars[car_ID].wheels[diff[1]].w +wal*dt*0.5
-            _G.cars[car_ID].wheels[diff[2]].w=_G.cars[car_ID].wheels[diff[2]].w +war*dt*0.5
-            _G.cars[car_ID].wheels[diff[1]].Lw=_G.cars[car_ID].wheels[diff[1]].Lw+wal
-            _G.cars[car_ID].wheels[diff[2]].Lw=_G.cars[car_ID].wheels[diff[2]].Lw+war
+            _G.cars[car_ID].wheels[diff[1]].w=_G.cars[car_ID].wheels[diff[1]].w +war*dt*0.5
+            _G.cars[car_ID].wheels[diff[2]].w=_G.cars[car_ID].wheels[diff[2]].w +wal*dt*0.5
+            _G.cars[car_ID].wheels[diff[1]].Lw=_G.cars[car_ID].wheels[diff[1]].Lw+war
+            _G.cars[car_ID].wheels[diff[2]].Lw=_G.cars[car_ID].wheels[diff[2]].Lw+wal
             --print(wal,war,output_torque_left,output_torque_right)
 
         end
