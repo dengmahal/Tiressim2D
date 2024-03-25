@@ -85,7 +85,7 @@ local default_tyre_params={ --205/60R15 91V
             q_Dtfi1=10,q_Crfi1=0.2,q_Crfi2=0.1,q_Brfi1=0.1,q_Drfi1=1,q_Drfi2=0
         },
         L_pure_slip={--longitudinal=x, lateral=y
-            L_Fz0=3000,         --nominal (rated) load in NEWTON  => change this to about 1/9.80665 the expected load(kg), if this is too low shimmy may accur(not good, but realistic)
+            L_Fz0=3000,         --nominal (rated) load in NEWTON  => change this to about 9.80665 * the expected load(kg), if this is too low shimmy may accur(not good, but realistic)
             L_mux=1,L_muy=1,    --peak friction coefficient
             L_Kxk=1,L_Kyk=1,    --brake slip stiffness
             L_Cx=1,L_Cy=1,      --shape factor
@@ -146,16 +146,49 @@ local new_car={
     inertia=1,      --will be calced automatacly
     inertria_scale=1.0769,
     CG_height=0.75, -->meters
-    diffs={
-        [1]={"RR","RL",0,0,1}      --powers1, powers2, lockrate(0=open, is Nm/dw) ,preload,final drive
+    diffs={ --diffs are in order from wheels to trans! --ID<1 is engines, ID>0 is diffs    if not,every diff may add a frame of delay in rpm delivery, i mean you could call it realistic tolerance sim ¯\_(ツ)_/¯
+    [1]={--engine always powers diff_id=1!!!! (for now (～o￣3￣)～ )
+            input=0,            ---input ID
+            output1=2,       --string=wheel, int=diff
+            output2=3,       --string=wheel, int=diff
+            lock=0.4,           --locking -> Nm/drad/s
+            preload=10,         --preload torque Nm
+            final_drive=1,      --final drive ratio
+            w=0,                --auto --> is input
+            ctq1=0,             --auto
+            ctq2=0,             --auto
+        },
+    [2]={--engine always powers diff_id=1!!!! (for now (～o￣3￣)～ )
+        input=1,            ---input ID
+        output1="RR",       --string=wheel, int=diff
+        output2="RL",       --string=wheel, int=diff
+        lock=0.4,           --locking -> Nm/drad/s
+        preload=10,         --preload torque Nm
+        final_drive=1,      --final drive ratio
+        w=0,                --auto --> is input
+        ctq1=0,             --auto
+        ctq2=0,             --auto
     },
-    steering_axles={{"FL","FR",math.rad(45),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
+    
+    [3]={--engine always powers diff_id=1!!!! (for now (～o￣3￣)～ )
+            input=1,            ---input ID
+            output1="RR",       --string=wheel, int=diff
+            output2="RL",       --string=wheel, int=diff
+            lock=0.4,           --locking -> Nm/drad/s
+            preload=10,         --preload torque Nm
+            final_drive=1,      --final drive ratio
+            w=0,                --auto --> is input
+            ctq1=0,             --auto
+            ctq2=0,             --auto
+        }
+    },
+    steering_axles={{"FL","FR",math.rad(25),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
     transmission_powers_diff=1,
-    engine={
+    engine={--C4 pre-Prince engine
         idle_rpm=700,
         rev_limiter=6500,
         bounce_time=0.3,        --in seconds
-        inertia=0.004,
+        inertia=0.4,
         engine_braking=0.001,   --Nm/rpm
         tq_curve={--rpm, torque(Nm)             --non turbo!!!
             {-10e64,    0},    
@@ -174,8 +207,8 @@ local new_car={
             {5500,      114},
             {6000,      100},
             {6500,      85},
-            {7000,      60},
-            {7500,      10},
+            {7000,      40},
+            {7500,      5},
             {8000,       0},
             {10e64,      0},
         },
@@ -193,7 +226,7 @@ local new_car={
         },
         loss=0.01       --transmission torque loss in %
     },
-    drivetrain_inertia=0.001,    --inertia of drivetrain (transmission+driveline+differential)
+    drivetrain_inertia=0.01,    --inertia of drivetrain (transmission+driveline) --> is semi-split at diff calc
 
     wheels={
         ["FL"]={
@@ -202,10 +235,10 @@ local new_car={
             x=-0.85,y=-1.01712 ,--->position relative to CG
             w=0,               --rad/s --> not a constant        
             rot=0,              --rad --> not a constant
-            camber=math.rad(-5),--in rad
-            tempratur=20,       --in K° --> not a constant (well for not it is)
+            camber=math.rad(0),--in rad
+            tempratur=20,       --in K° --> not a constant (well for now it is)
             lr=0,               --auto
-            inertia=0.03,         --kg*m^2
+            inertia=0.3,         --kg*m^2
             wa=0,               --last wheel angular acceleration -> auto
         },
         ["FR"]={
@@ -214,10 +247,10 @@ local new_car={
             x=0.85,y=-1.01712 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
-            camber=math.rad(-5),
+            camber=math.rad(0),
             tempratur=20,
             lr=0,
-            inertia=0.03,
+            inertia=0.3,
             wa=0,
         },
 
@@ -227,10 +260,10 @@ local new_car={
             x=-0.85,y=1.59088 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
-            camber=math.rad(-5),
+            camber=math.rad(0),
             tempratur=20,
             lr=0,
-            inertia=0.03,
+            inertia=0.3,
             wa=0,
         },
 
@@ -240,10 +273,10 @@ local new_car={
             x=0.85,y=1.59088 , --->position relative to CG
             w=0, --rad/s
             rot=0, --rad
-            camber=math.rad(-5),
+            camber=math.rad(0),
             tempratur=20,
             lr=0,
-            inertia=0.03,
+            inertia=0.3,
             wa=0,
         },
     },
@@ -292,10 +325,6 @@ local new_car={
     },
     wheelbasey=0,
 }
-new_car.tyre_params[1].L_pure_slip.L_muy=2
-new_car.tyre_params[1].L_pure_slip.L_mux=2
-new_car.tyre_params[2].L_pure_slip.L_mux=1
-new_car.tyre_params[2].L_pure_slip.L_muy=1
 _G.cars={} 
 
 _G.campos={x=0,y=0}
@@ -479,12 +508,12 @@ function love.update(dt)
     local dd=false
     local did_steer=false
     if love.keyboard.isDown("a") then
-        steer=-0.25 --1/math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*mm
+        steer=-1 --1/math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*mm
         did_steer=true
         
     end
     if love.keyboard.isDown("d") then
-        steer=0.25 --1/math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*mm
+        steer=1 --1/math.sqrt(cars[1].vel.x*cars[1].vel.x+cars[1].vel.y*cars[1].vel.y)*mm
         did_steer=true
     end
     if did_steer==false then
@@ -542,6 +571,12 @@ function love.update(dt)
         _G.cars[car_ID].pos.x=car.pos.x+car.vel.x*0.5*dt
         _G.cars[car_ID].pos.y=car.pos.y+car.vel.y*0.5*dt
         _G.cars[car_ID].rot=car.rot+car.rotvel *0.5*dt
+        local w_up={}
+        for i,wheel in pairs(car.wheels) do
+            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wheel.Lw*dt*0.5
+            w_up[i]=0
+            _G.cars[car_ID].wheels[i].Lw=0
+        end
         -- [[
            -- print(steer)
         for _,steering_axle in pairs(car.steering_axles) do
@@ -577,14 +612,102 @@ function love.update(dt)
             trans_torque=0
         else
             trans_torque=engine_toque*car.transmission.gears[car.cgear]
-            local engine_rads=((car.wheels[car.diffs[1][1]].w+car.wheels[car.diffs[1][1]].w)*0.5)*(car.diffs[1][5]*car.transmission.gears[car.cgear])/car.wheels["FR"].radius
-            _G.cars[car_ID].engine.rpm=math.max(math.min(60*engine_rads/(2*math.pi),50000),-5000)
+            --local engine_rads=((car.wheels[car.diffs[1].output1].w+car.wheels[car.diffs[1].output2].w)*0.5)*(car.diffs[1].final_drive*car.transmission.gears[car.cgear])/car.wheels["FR"].radius
+            --_G.cars[car_ID].engine.rpm=math.max(math.min(60*engine_rads/(2*math.pi),50000),-5000)
         end
         ---still needs clutch sim!! avgtq&avgrpm & clutch
-        
-        
-        
-        --local trans_torque=throttle*6000
+        -- [[
+        for idiff,diff in pairs(car.diffs) do --W->T pass 
+            local w1=0
+            local w2=0
+            if type(diff.output1)=="string" then
+                w1=_G.cars[car_ID].wheels[diff.output1].w
+            else
+                w1=_G.cars[car_ID].diffs[diff.output1].w
+            end
+            if type(diff.output2)=="string" then
+                w2=_G.cars[car_ID].wheels[diff.output2].w
+            else
+                w2=_G.cars[car_ID].diffs[diff.output2].w
+            end
+            _G.cars[car_ID].diffs[idiff].w=(w1+w2)*0.5
+            if diff.input==0 then
+                local engine_rads= diff.w*car.diffs[1].final_drive*car.transmission.gears[car.cgear]/car.wheels["FR"].radius
+            end
+        end
+
+        for idiff=#car.diffs,1,-1 do    --T->W pass
+            local diff=car.diffs[idiff]
+            local WR--=car.wheels[diff.output1]
+            local WL--=car.wheels[diff.output2]
+            --local RW--=car.wheels[diff.output1].w
+            --local LW--=car.wheels[diff.output2].w
+            if type(diff.output1)=="string" then
+                WR=car.wheels[diff.output1]
+            else
+                WR=car.diffs[diff.output1]
+            end
+            if type(diff.output2)=="string" then
+                WL=car.wheels[diff.output2]
+            else
+                WL=car.diffs[diff.output2]
+            end
+            local RW=WR.w
+            local LW=WL.w
+            local tda=(math.abs(RW-LW)+diff.preload)
+            local itq=0
+            if diff.input==0 then
+                itq=trans_torque or 0
+            else
+                if car.diffs[diff.input].output1==idiff then
+                    itq=car.diffs[diff.input].ct1 or 0
+                else
+                    itq=car.diffs[diff.input].ct2 or 0
+                end
+            end
+            local output_torque_right=(itq*0.5-(tda)*math.sign(RW-LW)*0.5*diff.lock)*diff.final_drive
+            local output_torque_left= (itq*0.5-(tda)*math.sign(LW-RW)*0.5*diff.lock)*diff.final_drive
+            if output_torque_left ~= output_torque_left  then
+                output_torque_left=1
+            end
+            if output_torque_right ~= output_torque_right  then
+                output_torque_right=1
+            end
+            local ABSTT=math.abs(output_torque_left)+math.abs(output_torque_right)
+            
+            
+            --_G.cars[car_ID].debug.tq[diff.output1]=output_torque_right
+            --_G.cars[car_ID].debug.tq[diff.output2]=output_torque_left
+            if war~=war then
+                war=1
+            end
+            if wal~=wal then
+                wal=1
+            end
+            --_G.cars[car_ID].wheels[diff.output1].w=_G.cars[car_ID].wheels[diff.output1].w +war*dt*0.5
+            --_G.cars[car_ID].wheels[diff.output2].w=_G.cars[car_ID].wheels[diff.output2].w +wal*dt*0.5
+            --_G.cars[car_ID].wheels[diff.output1].Lw=_G.cars[car_ID].wheels[diff.output1].Lw+war
+            --_G.cars[car_ID].wheels[diff.output2].Lw=_G.cars[car_ID].wheels[diff.output2].Lw+wal
+            --w_up[diff.output1]=w_up[diff.output1] +war
+            --w_up[diff.output2]=w_up[diff.output2] +wal
+            if type(diff.output1)=="string" then
+                local war=(output_torque_right)/(WR.inertia+car.engine.inertia*clutch*(math.abs(output_torque_right)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_right)/ABSTT)*0.5)
+                w_up[diff.output1]=w_up[diff.output1]+war
+            else
+                _G.cars[car_ID].diffs[diff.output1].ct1=output_torque_right
+            end
+            if type(diff.output1)=="string" then
+                local wal=(output_torque_left)/(WL.inertia+car.engine.inertia*clutch*(math.abs(output_torque_left)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_left)/ABSTT)*0.5) 
+                w_up[diff.output2]=w_up[diff.output2]+wal
+            else
+                _G.cars[car_ID].diffs[diff.output2].ct2=output_torque_left
+            end
+
+            --print(wal,war,output_torque_left,output_torque_right)
+        end
+        --]]
+
+        --
         if car.rot<-math.pi then
             car.rot=2*math.pi-car.rot--math.pi
         elseif car.rot>math.pi then
@@ -599,7 +722,7 @@ function love.update(dt)
         --
         for i,wheel in pairs(car.wheels)do
             
-            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wheel.Lw*dt*0.5
+            
             --_G.cars[car_ID].wheels[i].w=math.min(_G.cars[car_ID].wheels[i].w,200)
             --local tyre_params=_G.cars[car_ID].tyre_params[wheel.tyre_params]
             local tp=default_tyre_params
@@ -838,59 +961,12 @@ function love.update(dt)
             local diffbias=0.5 --needs fix
             
             local wa=(F_x*wheel.radius-M_y)/(wheel.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*diffbias)
-            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wa*dt*0.5
-            _G.cars[car_ID].wheels[i].Lw=wa
-            
+            --_G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+ wa*dt*0.5
+            w_up[i]=w_up[i]+wa
+            _G.cars[car_ID].wheels[i].Lw=_G.cars[car_ID].wheels[i].Lw+wa 
         end
-        for idiff,diff in pairs(car.diffs) do
-            local TBR=0
-            local WR=car.wheels[diff[1]]
-            local WL=car.wheels[diff[2]]
-            local RW=car.wheels[diff[1]].w
-            local LW=car.wheels[diff[2]].w
-
-
-            local tda=(math.abs(RW-LW)+diff[4])
-
-            
-            --local output_torque_left=((trans_torque)*0.5 +tda*math.sign(RF-LF)*diff[3]-((LF-RF)*diff[3]))/diff[5]
-            --local output_torque_right=((trans_torque)*0.5 +tda*math.sign(LF-RF)*diff[3]-((RF-LF)*diff[3]))/diff[5]
-            local output_torque_right=(trans_torque*0.5-(tda)*math.sign(RW-LW)*0.5*diff[3])/diff[5]
-            local output_torque_left= (trans_torque*0.5-(tda)*math.sign(LW-RW)*0.5*diff[3])/diff[5]
-            local didnan=false
-            if output_torque_left ~= output_torque_left  then
-                output_torque_left=1
-                didnan=true
-            end
-            if output_torque_right ~= output_torque_right  then
-                output_torque_right=1
-                didnan=true
-            end
-            local ABSTT=math.abs(output_torque_left)+math.abs(output_torque_right)
-            local wal=(output_torque_left)/(WL.inertia+car.engine.inertia*clutch*(math.abs(output_torque_left)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_left)/ABSTT)*0.5) 
-            local war=(output_torque_right)/(WR.inertia+car.engine.inertia*clutch*(math.abs(output_torque_right)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_right)/ABSTT)*0.5)
-            
-            _G.cars[car_ID].debug.tq[diff[1]]=output_torque_right
-            _G.cars[car_ID].debug.tq[diff[2]]=output_torque_left
-            
-            --if didnan==true then
-            --    wal=(output_torque_left*WL.radius)/(WL.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5) 
-            --    war=(output_torque_right*WR.radius)/(WR.inertia+car.engine.inertia*clutch+car.drivetrain_inertia*0.5)
-            --end
-            --print(output_torque_left,output_torque_right,WL.radius,WL.inertia,car.engine.inertia,clutch,car.drivetrain_inertia,war,wal,wal*dt*0.5,war*dt*0.5*0)
-            
-            if war~=war then
-                war=0
-            end
-            if wal~=wal then
-                wal=0
-            end
-            _G.cars[car_ID].wheels[diff[1]].w=_G.cars[car_ID].wheels[diff[1]].w +war*dt*0.5
-            _G.cars[car_ID].wheels[diff[2]].w=_G.cars[car_ID].wheels[diff[2]].w +wal*dt*0.5
-            _G.cars[car_ID].wheels[diff[1]].Lw=_G.cars[car_ID].wheels[diff[1]].Lw+war
-            _G.cars[car_ID].wheels[diff[2]].Lw=_G.cars[car_ID].wheels[diff[2]].Lw+wal
-            --print(wal,war,output_torque_left,output_torque_right)
-
+        for i,v in pairs(w_up)do
+            _G.cars[car_ID].wheels[i].w=_G.cars[car_ID].wheels[i].w+v*0.5*dt
         end
         local TA=TTQ/car.inertia
         _G.cars[car_ID].rotvel=car.rotvel+TA*0.5*dt
