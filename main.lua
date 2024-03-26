@@ -12,7 +12,7 @@ local WindowsGamingInput  = ffi.load("Windows.Gaming.Input.dll")
 --local Steam = require("luasteam")
 local discordRPC = require("discordRPC")
 
-local TICK_RATE = 1 / 1000
+local TICK_RATE = 1 / 5000
 --discord stuff
 --local appId_txt =  io.open(love.filesystem.getSource().."/../discord_id.txt","r")
 ---@diagnostic disable-next-line: need-check-nil
@@ -99,7 +99,7 @@ local default_tyre_params={ --205/60R15 91V
             L_Mr=1,             --residual torque
         },
         L_combined_slip={
-            L_xa=2,             --slip_angle influence on F_x
+            L_xa=1,             --slip_angle influence on F_x
             L_yk=1,             --slip_ratio influence on F_y
             L_Vyk=1,            --slip_ratio induced ply-steer F_y
             L_smz=1,            --moment arm of F_x
@@ -122,7 +122,7 @@ local default_tyre_params={ --205/60R15 91V
             T_4=0.15,           --^4 effect on D (peak)
             T_5=1,              --^2 asymetric effect on D (peak)  => T>T_ref       range <0.15
             T_6=0.1,            --^2 asymetric effect on D (peak)  => T<T_ref       range >-0.15
-            T_ref=100,          --reference temperature
+            T_ref=100+273.15,          --reference temperature °K
         },
         wet_coefficients={
             W_V=1.15567022142689,--aquaplaning effect on F_z (peak)
@@ -147,13 +147,16 @@ local new_car={
     inertria_scale=1.0769,
     CG_height=0.75, -->meters
     diffs={ --diffs are in order from wheels to trans! --ID<1 is engines, ID>0 is diffs    if not,every diff may add a frame of delay in rpm delivery, i mean you could call it realistic tolerance sim ¯\_(ツ)_/¯
+    --only ONE diff is allowed to be connected to the transmission!!
+    --if you get wierd re you probably fucked something up here
+    -- [[ fuck it, AWD C4 I 2008 (ﾉ*･ω･)ﾉ
     [3]={--engine always powers diff_id=1!!!! (for now (～o￣3￣)～ )
             input=0,            ---input ID
             output1=2,       --string=wheel, int=diff
-            output2=3,       --string=wheel, int=diff
+            output2=1,       --string=wheel, int=diff
             lock=0.4,           --locking -> Nm/drad/s
             preload=10,         --preload torque Nm
-            final_drive=2,      --final drive ratio
+            final_drive=3.14,      --final drive ratio
             w=1,                --auto --> is input
             ctq1=0,             --auto
             ctq2=0,             --auto
@@ -181,13 +184,38 @@ local new_car={
             ctq1=0,             --auto
             ctq2=0,             --auto
         }
+    },--]]
+    --[[
+         [1]={--engine always powers diff_id=1!!!! (for now (～o￣3￣)～ )
+            input=0,            ---input ID
+            output1="FR",       --string=wheel, int=diff
+            output2="FL",       --string=wheel, int=diff
+            lock=0.4,           --locking -> Nm/drad/s        --> put this to a large value (compared to tq and Fxy,My) to make a "welded" differential
+            preload=10,         --preload torque Nm
+            final_drive=3.1,      --final drive ratio
+            w=0,                --auto --> is input
+            ctq1=0,             --auto
+            ctq2=0,             --auto
+        }
+    },--]]
+    clutch={
+        T_C=20,                 --Coulomb friction torque Nm
+        T_brk=30,               --breakaway friction torque Nm
+        w_brk=5,                --breakaway friction velocity drad/s
+        f_viscous=0.05,         --viscous friction coefficient Nm/(drad/s))
+        max_force=100,          --max clutch pressure N
+        temp_cap=1000,          --thermal capacity of clutch    J
+        temp_gen=1,             --thermal generation rate W/(drad/s)
+        temp_cool=100,            --thermal cooling factor W
+        temp_eff=1,             --torque transfere droppoff from temprature
+        temp_ref=80,            --reference temperature °K
     },
     steering_axles={{"FL","FR",math.rad(25),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
     transmission_powers_diff=1,
-    engine={--C4 pre-Prince engine
+    engine={--C4 ET3 J4 engine
         idle_rpm=700,
         rev_limiter=6500,
-        bounce_time=0.3,        --in seconds
+        bounce_time=0.3,        --in seconds    --no clue if it even has one LOL 
         inertia=0.4,
         engine_braking=0.001,   --Nm/rpm
         tq_curve={--rpm, torque(Nm)             --non turbo!!!
@@ -213,6 +241,7 @@ local new_car={
             {10e64,      0},
         },
         rpm=0,
+        rads=0,
 
     },
     transmission={
@@ -222,11 +251,11 @@ local new_car={
             [2]=3.45,
             [3]=2.45,
             [4]=1.8,
-            [5]=1.4,
+            [5]=1.35,
         },
         loss=0.01       --transmission torque loss in %
     },
-    drivetrain_inertia=0.01,    --inertia of drivetrain (transmission+driveline) --> is semi-split at diff calc
+    drivetrain_inertia=0.01,    --inertia of drivetrain (transmission+drivelines) --> is semi-split at diff calc
 
     wheels={
         ["FL"]={
@@ -644,6 +673,7 @@ function love.update(dt)
             if diff.input==0 then
                 local engine_rads=diff.w*car.transmission.gears[car.cgear]--*car.diffs[idiff].final_drive
                 _G.cars[car_ID].engine.rpm=math.max(math.min(60*engine_rads/(2*math.pi),2e60),-2e60)
+                _G.cars[car_ID].engine.rads=engine_rads
             end
             --print("w1w2",w1,w2,_G.cars[car_ID].diffs[idiff].w,idiff)
         end
@@ -695,13 +725,15 @@ function love.update(dt)
             end
             if type(diff.output1)=="string" then
                 local war=(output_torque_right)/(WR.inertia+car.engine.inertia*clutch*(math.abs(output_torque_right)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_right)/ABSTT)*0.5)
+                _G.cars[car_ID].debug.tq[diff.output1]=output_torque_right
                 w_up[diff.output1]=w_up[diff.output1]+war
             else
                 _G.cars[car_ID].diffs[idiff].ct1=output_torque_right
                 --print("a",_G.cars[car_ID].diffs[idiff].ct1,_G.cars[car_ID].diffs[idiff].ct2)
             end
-            if type(diff.output1)=="string" then
+            if type(diff.output2)=="string" then
                 local wal=(output_torque_left)/(WL.inertia+car.engine.inertia*clutch*(math.abs(output_torque_left)/ABSTT)*0.5+car.drivetrain_inertia*(math.abs(output_torque_left)/ABSTT)*0.5) 
+                _G.cars[car_ID].debug.tq[diff.output2]=output_torque_left
                 w_up[diff.output2]=w_up[diff.output2]+wal
             else
                 _G.cars[car_ID].diffs[idiff].ct2=output_torque_left
