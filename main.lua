@@ -202,7 +202,7 @@ local new_car={
         T_C=20,                 --Coulomb friction torque Nm
         T_brk=30,               --breakaway friction torque Nm
         w_brk=5,                --breakaway friction velocity drad/s
-        f_viscous=0.05,         --viscous friction coefficient Nm/(drad/s))
+        f_viscous=0.025,         --viscous friction coefficient Nm/(drad/s))
         max_force=100,          --max clutch pressure N
         temp_cap=1000,          --thermal capacity of clutch    J
         temp_gen=1,             --thermal generation rate W/(drad/s)
@@ -211,7 +211,6 @@ local new_car={
         temp_ref=80,            --reference temperature °K
     },
     steering_axles={{"FL","FR",math.rad(25),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
-    transmission_powers_diff=1,
     engine={--C4 ET3 J4 engine
         idle_rpm=700,
         rev_limiter=6500,
