@@ -209,7 +209,9 @@ local new_car={
         temp_cool=100,            --thermal cooling factor W
         temp_eff=1,             --torque transfere droppoff from temprature
         temp_ref=80,            --reference temperature °K
-    },
+    },--T=sqrt(2*e)*(T_brk-T_C)*exp(-(w/w_St)^2)*(w/w_St)+T_C*tanh(w/w_Coul)+f*w
+      --w_St=w_brk*sqrt(2)
+      --w_Coul=w_brk/10
     steering_axles={{"FL","FR",math.rad(25),0.1}}, --wheelL, wheelR, max steering value, ackerman constant    ==> steering angle has no physical unit, and also dependant on wheelbase y and ackerman
     engine={--C4 ET3 J4 engine
         idle_rpm=700,
